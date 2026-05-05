@@ -215,6 +215,66 @@ const GuestsPicker = {
   }
 };
 
+// Multi-step booking draft. Persisted in sessionStorage so a refresh
+// during the meals/payment steps doesn't wipe the user's selections.
+const Draft = {
+  KEY: "stayly.draft.v1",
+  read() {
+    try { return JSON.parse(sessionStorage.getItem(this.KEY)) || null; } catch { return null; }
+  },
+  write(d) {
+    if (d == null) sessionStorage.removeItem(this.KEY);
+    else sessionStorage.setItem(this.KEY, JSON.stringify(d));
+  },
+  clear() { sessionStorage.removeItem(this.KEY); }
+};
+
+function priceBreakdown(d) {
+  const l = Store.listings.byId(d.listingId);
+  if (!l) return null;
+  const nights = Math.max(1, Math.round((d.dateOut - d.dateIn) / 86400000));
+  const nightly = nights * l.pricePerNight;
+  const cleaning = 245;
+  const service = Math.round(nightly * 0.12);
+  const fest = window.festivalForRange(d.dateIn, d.dateOut);
+  const discount = fest ? Math.round(nightly * FESTIVAL_DISCOUNT) : 0;
+  const guestCount = (d.adults || 0) + (d.children || 0);
+  const meals = d.meals || {};
+  const paidMeals = MEALS.filter(m => meals[m.id]?.enabled && !m.free);
+  const freeMeals = MEALS.filter(m => meals[m.id]?.enabled && m.free);
+  const mealsCost = paidMeals.reduce((s, m) => s + m.pricePerPerson, 0) * guestCount * nights;
+  const total = nightly + cleaning + service - discount + mealsCost;
+  return { l, nights, nightly, cleaning, service, fest, discount, paidMeals, freeMeals, mealsCost, total, guestCount };
+}
+
+function bookingSummaryCard(d) {
+  const b = priceBreakdown(d);
+  if (!b) return el("div", {}, "Listing not found");
+  const rows = [
+    el("div", { class: "row", html: `<span>${fmtMoney(b.l.pricePerNight)} × ${b.nights} night${b.nights === 1 ? "" : "s"}</span><span>${fmtMoney(b.nightly)}</span>` }),
+    b.fest ? el("div", { class: "row discount", html: `<span>${b.fest.emoji} ${b.fest.name} discount (5%)</span><span>−${fmtMoney(b.discount)}</span>` }) : null,
+    ...b.freeMeals.map(m => el("div", { class: "row meal free-meal", html: `<span>${m.emoji} ${m.label}</span><span>Included</span>` })),
+    ...b.paidMeals.map(m => el("div", { class: "row meal", html: `<span>${m.emoji} ${m.label} · ${b.guestCount}p × ${b.nights}d</span><span>${fmtMoney(m.pricePerPerson * b.guestCount * b.nights)}</span>` })),
+    el("div", { class: "row", html: `<span>Cleaning fee</span><span>${fmtMoney(b.cleaning)}</span>` }),
+    el("div", { class: "row", html: `<span>Service fee</span><span>${fmtMoney(b.service)}</span>` }),
+    el("div", { class: "total", html: `<span>Total</span><span>${fmtMoney(b.total)}</span>` })
+  ];
+  return el("aside", { class: "summary-card" }, [
+    el("div", { class: "summary-listing" }, [
+      el("img", { src: b.l.images[0], alt: b.l.title }),
+      el("div", {}, [
+        el("div", { class: "summary-listing-title" }, b.l.title),
+        el("div", { class: "summary-listing-loc" }, b.l.location)
+      ])
+    ]),
+    el("div", { class: "summary-meta" }, [
+      el("div", {}, [el("strong", {}, "Dates"), el("span", {}, fmtDate(d.dateIn) + " → " + fmtDate(d.dateOut))]),
+      el("div", {}, [el("strong", {}, "Guests"), el("span", {}, b.guestCount + " guest" + (b.guestCount === 1 ? "" : "s"))])
+    ]),
+    el("div", { class: "summary-totals", html: "" }, rows.filter(Boolean))
+  ]);
+}
+
 function confirmModal({ title, body, confirmText = "Confirm", danger = false }) {
   return new Promise(resolve => {
     const backdrop = el("div", { class: "modal-backdrop" });
@@ -589,13 +649,7 @@ route("/property/:id", ({ id }) => {
   const checkInBtn = el("button", { type: "button", class: "df-cell" }, "");
   const checkOutBtn = el("button", { type: "button", class: "df-cell" }, "");
   const guestsBtn = el("button", { type: "button", class: "df-cell df-cell-full" }, "");
-  const mealsBtn = el("button", { type: "button", class: "df-cell df-cell-full" }, "");
   const totalsBox = el("div", { class: "totals" });
-
-  // Breakfast is complimentary and on by default; lunch + dinner are optional add-ons.
-  let meals = {
-    breakfast: { enabled: true, items: MEALS[0].menu.slice(0, 4).map(i => i.name) }
-  };
 
   function fmtDayLabel(d) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
   function refreshTriggers() {
@@ -604,10 +658,6 @@ route("/property/:id", ({ id }) => {
     const total = adults + children;
     const detail = (children ? `${adults} adult${adults === 1 ? "" : "s"} · ${children} child${children === 1 ? "" : "ren"}` : `${adults} adult${adults === 1 ? "" : "s"}`);
     guestsBtn.innerHTML = `<label>Guests</label><div class="val">${total} guest${total === 1 ? "" : "s"} <span class="muted">· ${detail}</span></div>`;
-    const enabled = MEALS.filter(m => meals[m.id]?.enabled);
-    const mealText = enabled.length === 0 ? "None — add for a chef-prepared menu" :
-      enabled.map(m => `${m.emoji} ${m.label.replace("Continental ", "")}${m.free ? " <span class='mp-free-pill'>free</span>" : ""}`).join(" · ");
-    mealsBtn.innerHTML = `<label>Meals</label><div class="val">${mealText}</div>`;
   }
 
   function recalcTotals() {
@@ -617,28 +667,16 @@ route("/property/:id", ({ id }) => {
     const service = Math.round(nightly * 0.12);
     const fest = window.festivalForRange(dateIn.getTime(), dateOut.getTime());
     const discount = fest ? Math.round(nightly * FESTIVAL_DISCOUNT) : 0;
-    const guestCount = adults + children;
-    const paidMeals = MEALS.filter(m => meals[m.id]?.enabled && !m.free);
-    const freeMeals = MEALS.filter(m => meals[m.id]?.enabled && m.free);
-    const mealsCost = paidMeals.reduce((s, m) => s + m.pricePerPerson, 0) * guestCount * nights;
-    const total = nightly + cleaning + service - discount + mealsCost;
-    const freeRows = freeMeals.map(m =>
-      `<div class="row meal free-meal"><span>${m.emoji} ${m.label}</span><span>Included</span></div>`
-    ).join("");
-    const paidRows = paidMeals.map(m => {
-      const sub = m.pricePerPerson * guestCount * nights;
-      return `<div class="row meal"><span>${m.emoji} ${m.label} · ${guestCount}p × ${nights}d</span><span>${fmtMoney(sub)}</span></div>`;
-    }).join("");
-    const mealRows = freeRows + paidRows;
+    const subtotal = nightly + cleaning + service - discount;
     totalsBox.innerHTML = `
       <div class="row"><span>${fmtMoney(l.pricePerNight)} × ${nights} night${nights === 1 ? "" : "s"}</span><span>${fmtMoney(nightly)}</span></div>
       ${fest ? `<div class="row discount"><span>${fest.emoji} ${fest.name} discount (5%)</span><span>−${fmtMoney(discount)}</span></div>` : ""}
-      ${mealRows}
       <div class="row"><span>Cleaning fee</span><span>${fmtMoney(cleaning)}</span></div>
       <div class="row"><span>Service fee</span><span>${fmtMoney(service)}</span></div>
-      <div class="total"><span>Total</span><span>${fmtMoney(total)}</span></div>
+      <div class="row meal free-meal"><span>🥐 Continental breakfast</span><span>Included</span></div>
+      <div class="total"><span>Subtotal · meals next</span><span>${fmtMoney(subtotal)}</span></div>
     `;
-    totalsBox._total = total;
+    totalsBox._subtotal = subtotal;
     totalsBox._nights = nights;
   }
 
@@ -679,52 +717,21 @@ route("/property/:id", ({ id }) => {
       onChange: ({ adults: a, children: c }) => { adults = a; children = c; refreshTriggers(); }
     });
   }
-  guestsBtn.addEventListener("click", openGuestsPopover);
-
-  // Meals popover
-  let openMeals = null;
-  function openMealsPopover() {
-    if (openMeals) { openMeals.close(); openMeals = null; return; }
-    openMeals = MealsPicker.open({
-      anchor: mealsBtn,
-      selection: meals,
-      onChange: next => { meals = next; refreshTriggers(); recalcTotals(); }
-    });
-  }
-  mealsBtn.addEventListener("click", openMealsPopover);
-
   refreshTriggers();
   setTimeout(recalcTotals, 0);
 
-  const reserveBtn = el("button", { class: "btn btn-primary btn-block btn-lg" }, "Reserve");
-  reserveBtn.addEventListener("click", async () => {
-    const session = Store.session.current();
+  const reserveBtn = el("button", { class: "btn btn-primary btn-block btn-lg" }, "Continue · choose meals");
+  reserveBtn.addEventListener("click", () => {
     if (dateOut <= dateIn) { toast("Check-out must be after check-in"); return; }
-    let payment;
-    try {
-      payment = await Payment.collect({ amount: totalsBox._total, listingTitle: l.title });
-    } catch {
-      toast("Payment cancelled");
-      return;
-    }
-    let booking;
-    try {
-      booking = await Store.bookings.create({
-        userId: session.userId,
-        listingId: l.id,
-        checkIn: dateIn.getTime(),
-        checkOut: dateOut.getTime(),
-        adults, children,
-        guests: adults + children,
-        total: totalsBox._total,
-        meals,
-        payment: { brand: payment.brand, last4: payment.last4, holder: payment.holder, txnId: payment.txnId }
-      });
-    } catch (err) {
-      toast("Booking failed: " + (err.message || "unknown error"));
-      return;
-    }
-    navigate("/booking/" + booking.id);
+    Draft.write({
+      listingId: l.id,
+      dateIn: dateIn.getTime(),
+      dateOut: dateOut.getTime(),
+      adults, children,
+      // Pre-select breakfast (free, complimentary).
+      meals: { breakfast: { enabled: true, items: MEALS[0].menu.slice(0, 4).map(i => i.name) } }
+    });
+    navigate("/booking/new/meals");
   });
 
   const gallery = el("div", { class: "gallery" });
@@ -755,7 +762,7 @@ route("/property/:id", ({ id }) => {
       el("div", { class: "booking-card" }, [
         el("div", { class: "price-line", html: `<span class="big">${fmtMoney(l.pricePerNight)}</span><span class="per">night</span>` }),
         el("div", { class: "df-grid" }, [
-          checkInBtn, checkOutBtn, guestsBtn, mealsBtn
+          checkInBtn, checkOutBtn, guestsBtn
         ]),
         reserveBtn,
         totalsBox
@@ -764,6 +771,281 @@ route("/property/:id", ({ id }) => {
   ]);
 
   shell(page);
+});
+
+// ---------------- step 2: meals selection page ----------------
+
+route("/booking/new/meals", () => {
+  const draft = Draft.read();
+  if (!draft) { navigate("/"); return; }
+  const l = Store.listings.byId(draft.listingId);
+  if (!l) { Draft.clear(); navigate("/"); return; }
+
+  // Local meal state for this page; persists to draft on every change
+  let meals = draft.meals || { breakfast: { enabled: true, items: MEALS[0].menu.slice(0, 4).map(i => i.name) } };
+  let summary;
+
+  function renderMeals() {
+    const sections = MEALS.map(meal => {
+      const cur = meals[meal.id] || { enabled: !!meal.free, items: [] };
+      const enabled = cur.enabled;
+      const cards = meal.menu.map(item => {
+        const checked = cur.items.includes(item.name);
+        const cb = el("input", { type: "checkbox", class: "mp-card-cb" });
+        cb.checked = checked;
+        if (!enabled) cb.disabled = true;
+        cb.addEventListener("change", () => {
+          const next = meals[meal.id] || { enabled: true, items: [] };
+          if (!next.enabled) next.enabled = true;
+          if (cb.checked) next.items.push(item.name);
+          else next.items = next.items.filter(i => i !== item.name);
+          meals[meal.id] = next;
+          persist();
+          renderMeals();
+        });
+        return el("label", { class: "mp-card" + (enabled ? "" : " disabled") + (checked ? " selected" : "") }, [
+          el("img", { class: "mp-card-img", src: item.image, alt: item.name, loading: "lazy" }),
+          el("div", { class: "mp-card-overlay" }),
+          el("span", { class: "mp-card-name" }, item.name),
+          cb
+        ]);
+      });
+      const toggle = el("input", { type: "checkbox" });
+      toggle.checked = enabled;
+      if (meal.free) toggle.disabled = true;
+      toggle.addEventListener("change", () => {
+        const next = meals[meal.id] || { enabled: false, items: [] };
+        next.enabled = toggle.checked;
+        if (next.enabled && next.items.length === 0) next.items = meal.menu.slice(0, 4).map(i => i.name);
+        meals[meal.id] = next;
+        persist();
+        renderMeals();
+      });
+      const priceCell = meal.free
+        ? el("div", { class: "mp-price free" }, [el("strong", {}, "FREE"), el("span", {}, "with booking")])
+        : el("div", { class: "mp-price" }, [el("strong", {}, fmtMoney(meal.pricePerPerson)), el("span", {}, "/ person / day")]);
+      return el("section", { class: "mp-section step-section" + (enabled ? " on" : "") + (meal.free ? " free" : "") }, [
+        el("header", { class: "mp-row" }, [
+          el("div", { class: "mp-meal" }, [
+            el("span", { class: "mp-emoji" }, meal.emoji),
+            el("div", {}, [el("strong", {}, meal.label), el("div", { class: "mp-serving" }, meal.serving)])
+          ]),
+          priceCell,
+          toggle
+        ]),
+        el("div", { class: "mp-items" }, cards)
+      ]);
+    });
+    const left = document.querySelector(".step-meals .step-main");
+    if (left) {
+      left.innerHTML = "";
+      const intro = el("div", { class: "step-intro" }, [
+        el("h1", {}, "Pick your meals"),
+        el("p", {}, "Continental breakfast is on us — it's complimentary with every stay. Lunch and dinner are optional add-ons; tap a card to include it on your menu.")
+      ]);
+      left.appendChild(intro);
+      sections.forEach(s => left.appendChild(s));
+    }
+    if (summary) {
+      const newSummary = bookingSummaryCard(Draft.read());
+      summary.replaceWith(newSummary);
+      summary = newSummary;
+    }
+  }
+
+  function persist() {
+    const cur = Draft.read() || {};
+    Draft.write({ ...cur, meals });
+  }
+
+  const continueBtn = el("button", { class: "btn btn-primary btn-lg" }, "Continue to payment");
+  continueBtn.addEventListener("click", () => navigate("/booking/new/payment"));
+  const backBtn = el("button", { class: "btn btn-ghost btn-lg" }, "← Back to listing");
+  backBtn.addEventListener("click", () => navigate("/property/" + l.id));
+
+  summary = bookingSummaryCard(draft);
+  const page = el("div", { class: "step-page step-meals" }, [
+    el("div", { class: "step-progress" }, [
+      el("div", { class: "step-dot done" }, "✓"), el("div", { class: "step-line done" }),
+      el("div", { class: "step-dot active" }, "2"), el("div", { class: "step-line" }),
+      el("div", { class: "step-dot" }, "3"),
+    ]),
+    el("div", { class: "step-progress-labels" }, [
+      el("span", { class: "done" }, "Dates & guests"),
+      el("span", { class: "active" }, "Meals"),
+      el("span", {}, "Payment")
+    ]),
+    el("div", { class: "step-shell" }, [
+      el("main", { class: "step-main" }),
+      summary
+    ]),
+    el("div", { class: "step-actions" }, [backBtn, continueBtn])
+  ]);
+  shell(page);
+  renderMeals();
+});
+
+// ---------------- step 3: payment page ----------------
+
+route("/booking/new/payment", () => {
+  const draft = Draft.read();
+  if (!draft) { navigate("/"); return; }
+  const l = Store.listings.byId(draft.listingId);
+  if (!l) { Draft.clear(); navigate("/"); return; }
+  const breakdown = priceBreakdown(draft);
+  if (!breakdown) { navigate("/"); return; }
+
+  // Build inline payment form (re-uses the same Mastercard styling as the modal)
+  let stage = "card"; // "card" -> "processing" -> "3ds" -> "success"
+  const stageHost = el("div", { class: "pay-page-stage" });
+
+  function brand(num) {
+    const n = num.replace(/\D/g, "");
+    if (/^5[1-5]/.test(n) || /^2(2[2-9]|[3-6]\d|7[01]|720)/.test(n)) return "mastercard";
+    if (/^4/.test(n)) return "visa";
+    return "unknown";
+  }
+  function luhn(num) {
+    const digits = num.replace(/\D/g, "").split("").reverse().map(Number);
+    if (digits.length < 12) return false;
+    return digits.reduce((a, d, i) => a + (i % 2 ? (d * 2 > 9 ? d * 2 - 9 : d * 2) : d), 0) % 10 === 0;
+  }
+  function formatCard(s) { return s.replace(/\D/g, "").slice(0, 19).replace(/(.{4})/g, "$1 ").trim(); }
+  function formatExp(s) { const d = s.replace(/\D/g, "").slice(0, 4); return d.length < 3 ? d : d.slice(0, 2) + "/" + d.slice(2); }
+
+  function renderCard() {
+    stage = "card";
+    stageHost.innerHTML = "";
+    const errBox = el("div", { class: "pay-error", style: "display:none" });
+    const numIn = el("input", { id: "pay_num", placeholder: "5123 4567 8901 2346", inputmode: "numeric", maxlength: "23" });
+    const expIn = el("input", { id: "pay_exp", placeholder: "MM/YY", inputmode: "numeric", maxlength: "5" });
+    const cvcIn = el("input", { id: "pay_cvc", type: "password", placeholder: "CVC", inputmode: "numeric", maxlength: "4" });
+    const nameIn = el("input", { id: "pay_name", placeholder: "Name on card" });
+    numIn.addEventListener("input", () => { numIn.value = formatCard(numIn.value); });
+    expIn.addEventListener("input", () => { expIn.value = formatExp(expIn.value); });
+    cvcIn.addEventListener("input", () => { cvcIn.value = cvcIn.value.replace(/\D/g, ""); });
+
+    const submit = el("button", { class: "btn btn-primary btn-lg", type: "submit" }, [el("span", {}, "🔒 "), document.createTextNode("Pay " + fmtMoney(breakdown.total))]);
+    const form = el("form", { class: "pay-page-form", onSubmit: e => {
+      e.preventDefault();
+      errBox.style.display = "none";
+      const num = numIn.value.replace(/\s/g, "");
+      if (!luhn(num)) { errBox.textContent = "Card number is invalid."; errBox.style.display = "block"; return; }
+      if (brand(num) !== "mastercard") { errBox.textContent = "Only Mastercard is supported. Try 5123 4567 8901 2346."; errBox.style.display = "block"; return; }
+      const m = expIn.value.match(/^(\d{2})\/(\d{2})$/);
+      if (!m) { errBox.textContent = "Expiry must be MM/YY."; errBox.style.display = "block"; return; }
+      const exp = new Date(2000 + +m[2], +m[1], 0, 23, 59, 59);
+      if (exp < new Date()) { errBox.textContent = "Card has expired."; errBox.style.display = "block"; return; }
+      if (cvcIn.value.length < 3) { errBox.textContent = "CVC must be 3 or 4 digits."; errBox.style.display = "block"; return; }
+      if (!nameIn.value.trim()) { errBox.textContent = "Enter the name on the card."; errBox.style.display = "block"; return; }
+      const last4 = num.slice(-4), holder = nameIn.value.trim();
+      renderProcessing();
+      setTimeout(() => render3DS(last4, holder), 1100);
+    }}, [
+      errBox,
+      el("label", {}, "Card number"),
+      numIn,
+      el("div", { class: "pay-row" }, [
+        el("div", {}, [el("label", {}, "Expiry"), expIn]),
+        el("div", {}, [el("label", {}, "CVC"), cvcIn])
+      ]),
+      el("label", {}, "Cardholder name"),
+      nameIn,
+      submit,
+      el("div", { class: "pay-test", html: 'Demo card: <code>5123 4567 8901 2346</code> · any future expiry · any 3-digit CVC · 3-D Secure code: <code>1234</code>' })
+    ]);
+    stageHost.appendChild(form);
+    setTimeout(() => numIn.focus(), 50);
+  }
+
+  function renderProcessing() {
+    stage = "processing";
+    stageHost.innerHTML = "";
+    stageHost.appendChild(el("div", { class: "pay-processing" }, [
+      el("div", { class: "pay-spinner" }),
+      el("div", { class: "pay-status" }, "Authorising with your bank…"),
+      el("div", { class: "pay-substatus" }, "Securing payment over TLS")
+    ]));
+  }
+
+  function render3DS(last4, holder) {
+    stage = "3ds";
+    stageHost.innerHTML = "";
+    const otpIn = el("input", { id: "pay_otp", placeholder: "Enter 4-digit code", inputmode: "numeric", maxlength: "4" });
+    const otpErr = el("div", { class: "pay-error", style: "display:none" });
+    const verifyBtn = el("button", { class: "btn btn-primary btn-lg", type: "submit" }, "Verify");
+    const otpForm = el("form", { class: "pay-3ds-form", onSubmit: e => {
+      e.preventDefault();
+      if (otpIn.value.trim() === "1234") finalize(last4, holder);
+      else { otpErr.textContent = "Incorrect code. Try 1234 for the demo."; otpErr.style.display = "block"; }
+    }}, [otpErr, otpIn, verifyBtn]);
+    stageHost.appendChild(el("div", { class: "pay-3ds" }, [
+      el("h3", {}, "Verify it's you"),
+      el("p", {}, "We sent a 4-digit security code for the card ending in •••• " + last4 + "."),
+      el("p", { class: "pay-3ds-amount" }, "Authorising " + fmtMoney(breakdown.total) + " · Stayly UAE"),
+      otpForm
+    ]));
+    setTimeout(() => otpIn.focus(), 50);
+  }
+
+  async function finalize(last4, holder) {
+    stage = "success";
+    stageHost.innerHTML = "";
+    stageHost.appendChild(el("div", { class: "pay-success" }, [
+      el("div", { class: "pay-tick", html: '<svg viewBox="0 0 64 64" width="64" height="64"><circle cx="32" cy="32" r="28" fill="none" stroke="#4ade80" stroke-width="3"/><path d="M20 33 L29 42 L46 24" fill="none" stroke="#4ade80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' }),
+      el("h3", {}, "Payment approved"),
+      el("p", { class: "pay-receipt" }, fmtMoney(breakdown.total) + " charged to •••• " + last4)
+    ]));
+    const txnId = "MC-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+    try {
+      const session = Store.session.current();
+      const booking = await Store.bookings.create({
+        userId: session.userId,
+        listingId: draft.listingId,
+        checkIn: draft.dateIn,
+        checkOut: draft.dateOut,
+        adults: draft.adults, children: draft.children,
+        guests: (draft.adults || 0) + (draft.children || 0),
+        total: breakdown.total,
+        meals: draft.meals,
+        payment: { brand: "mastercard", last4, holder, txnId }
+      });
+      Draft.clear();
+      setTimeout(() => navigate("/booking/" + booking.id), 1000);
+    } catch (err) {
+      toast("Booking failed: " + (err.message || "unknown error"));
+      setTimeout(() => navigate("/property/" + draft.listingId), 1500);
+    }
+  }
+
+  const backBtn = el("button", { class: "btn btn-ghost btn-lg" }, "← Back to meals");
+  backBtn.addEventListener("click", () => navigate("/booking/new/meals"));
+
+  const page = el("div", { class: "step-page step-payment" }, [
+    el("div", { class: "step-progress" }, [
+      el("div", { class: "step-dot done" }, "✓"), el("div", { class: "step-line done" }),
+      el("div", { class: "step-dot done" }, "✓"), el("div", { class: "step-line done" }),
+      el("div", { class: "step-dot active" }, "3"),
+    ]),
+    el("div", { class: "step-progress-labels" }, [
+      el("span", { class: "done" }, "Dates & guests"),
+      el("span", { class: "done" }, "Meals"),
+      el("span", { class: "active" }, "Payment")
+    ]),
+    el("div", { class: "step-shell" }, [
+      el("main", { class: "step-main" }, [
+        el("div", { class: "pay-page-head" }, [
+          el("svg", { viewBox: "0 0 48 30", width: "48", height: "30", "aria-label": "Mastercard", html: '<circle cx="18" cy="15" r="12" fill="#eb001b"/><circle cx="30" cy="15" r="12" fill="#f79e1b"/><path d="M24 6.5a12 12 0 0 0 0 17 12 12 0 0 0 0-17z" fill="#ff5f00"/>' }),
+          el("div", {}, [el("strong", {}, "Mastercard Payment Gateway"), el("div", { class: "pay-page-secure" }, "Secured with 3-D Secure ID Check")])
+        ]),
+        stageHost
+      ]),
+      bookingSummaryCard(draft)
+    ]),
+    el("div", { class: "step-actions" }, [backBtn])
+  ]);
+  shell(page);
+  renderCard();
 });
 
 // ---------------- user: booking confirmation ----------------

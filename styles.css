@@ -1218,6 +1218,122 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 .table td.stack .refund-line { color: var(--good); font-weight: 600; font-size: 13px; }
 .table td.stack .fee-line { color: var(--ink-soft); font-size: 11px; }
 
+/* ---------- multi-step booking pages ---------- */
+.step-page {
+  max-width: 1080px; margin: 0 auto;
+  padding: 24px 20px 80px;
+  animation: fade-up 0.35s ease-out;
+}
+.step-progress {
+  display: flex; align-items: center; gap: 8px;
+  max-width: 480px; margin: 0 auto 8px;
+  padding: 0 8px;
+}
+.step-dot {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+  background: var(--bg-elev); color: var(--ink-soft);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.step-dot.done { background: var(--good); color: #fff; border-color: var(--good); }
+.step-dot.active { background: var(--rose); color: #fff; border-color: var(--rose); box-shadow: 0 0 0 4px rgba(255, 56, 92, 0.2); }
+.step-line {
+  flex: 1; height: 2px; background: var(--line);
+}
+.step-line.done { background: var(--good); }
+.step-progress-labels {
+  display: flex; justify-content: space-between;
+  max-width: 480px; margin: 0 auto 28px;
+  padding: 0 8px; font-size: 12px; color: var(--ink-soft);
+}
+.step-progress-labels .done { color: var(--good); font-weight: 600; }
+.step-progress-labels .active { color: var(--rose); font-weight: 700; }
+
+.step-shell {
+  display: grid; grid-template-columns: 1fr 360px; gap: 32px;
+  align-items: start;
+}
+.step-main { min-width: 0; }
+.step-intro { margin-bottom: 20px; }
+.step-intro h1 { margin: 0 0 6px; font-size: 28px; }
+.step-intro p { color: var(--ink-soft); margin: 0; max-width: 580px; line-height: 1.5; }
+.step-section { margin-bottom: 16px; }
+.step-actions {
+  display: flex; justify-content: space-between; gap: 12px;
+  margin-top: 28px; max-width: 100%;
+}
+.step-actions .btn { flex: 0 1 auto; }
+.step-actions .btn-primary { flex: 1; max-width: 320px; margin-left: auto; }
+
+.summary-card {
+  position: sticky; top: 110px;
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-md);
+  align-self: start;
+}
+.summary-listing { display: flex; gap: 12px; margin-bottom: 14px; }
+.summary-listing img {
+  width: 88px; height: 70px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;
+}
+.summary-listing-title { font-weight: 700; font-size: 14px; line-height: 1.3; }
+.summary-listing-loc { color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+.summary-meta {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.summary-meta strong { display: block; font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.summary-meta span { font-size: 13px; }
+.summary-totals {
+  margin-top: 14px; font-size: 14px;
+}
+.summary-totals .row {
+  display: flex; justify-content: space-between; padding: 4px 0;
+}
+.summary-totals .row.discount { color: var(--good); font-weight: 600; }
+.summary-totals .row.meal { color: var(--ink-soft); font-size: 13px; }
+.summary-totals .row.meal.free-meal span:last-child {
+  color: var(--good); font-weight: 700; text-transform: uppercase; font-size: 12px;
+}
+.summary-totals .total {
+  display: flex; justify-content: space-between; font-weight: 700;
+  border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px;
+}
+
+/* payment page-specific */
+.pay-page-stage { background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; }
+.pay-page-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px; margin-bottom: 16px;
+  background: linear-gradient(135deg, #001436 0%, #052962 100%);
+  color: #fff; border-radius: var(--radius-lg);
+}
+.pay-page-head strong { display: block; font-size: 14px; }
+.pay-page-secure { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+.pay-page-form {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.pay-page-form label {
+  font-size: 11px; font-weight: 700; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px;
+}
+.pay-page-form input {
+  background: var(--bg); border: 1px solid var(--line);
+  padding: 12px 14px; font-size: 14px;
+}
+.pay-page-form .pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pay-page-form .btn { margin-top: 18px; }
+
+@media (max-width: 880px) {
+  .step-shell { grid-template-columns: 1fr; }
+  .summary-card { position: static; order: -1; }
+  .step-progress, .step-progress-labels { max-width: 100%; }
+}
+
 /* ---------- booking confirmation ---------- */
 .confirm-page {
   max-width: 760px; margin: 0 auto; padding: 32px 20px 64px;
