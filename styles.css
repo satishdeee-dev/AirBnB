@@ -258,36 +258,91 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
   text-align: center; font-weight: 700; margin-bottom: 8px;
 }
 .dp-grid {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 0;
 }
 .dp-dow {
-  text-align: center; font-size: 11px; color: var(--ink-soft); padding: 4px 0; font-weight: 600;
+  text-align: center; font-size: 11px; color: var(--ink-soft);
+  padding: 4px 0 8px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
+/* The cell button itself is just a sizing container; visuals are done by .dp-day + ::before */
 .dp-cell {
   position: relative;
+  display: flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink);
-  height: 38px; border-radius: 8px;
+  border: 0; padding: 0;
+  height: 44px;
   font-size: 13px; font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s;
 }
 .dp-cell.empty { cursor: default; }
-.dp-cell:not(.empty):not(.past):not(.from):not(.to):hover { background: var(--bg-elev); }
-.dp-cell.past { color: var(--ink-soft); opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
-.dp-cell.in-range { background: rgba(255, 56, 92, 0.16); color: var(--ink); border-radius: 0; }
-.dp-cell.hover-range { background: rgba(255, 56, 92, 0.10); border-radius: 0; }
-.dp-cell.from, .dp-cell.to { background: var(--rose); color: #fff; border-radius: 8px; }
-.dp-cell.from { box-shadow: inset -8px 0 0 0 rgba(255, 56, 92, 0.16); }
-.dp-cell.to { box-shadow: inset 8px 0 0 0 rgba(255, 56, 92, 0.16); }
-.dp-cell.from.to { box-shadow: none; }
-.dp-cell.festival::after {
-  content: ""; position: absolute;
-  top: 4px; right: 4px;
-  width: 6px; height: 6px;
-  background: #ffd166; border-radius: 50%;
-  box-shadow: 0 0 8px rgba(255, 209, 102, 0.7);
+
+/* The visible day-number disc — sits above the range strip via z-index */
+.dp-cell .dp-day {
+  position: relative; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
 }
 .dp-cell .dp-fest-dot { display: none; }
+
+/* Default hover: soft pill on the day disc */
+.dp-cell:not(.empty):not(.past):not(.from):not(.to):not(.in-range):hover .dp-day {
+  background: var(--bg-elev);
+}
+
+/* Past dates */
+.dp-cell.past { color: var(--ink-soft); opacity: 0.4; cursor: not-allowed; }
+.dp-cell.past .dp-day { text-decoration: line-through; }
+
+/* Range fill — a continuous rectangular strip behind the disc */
+.dp-cell.in-range::before {
+  content: "";
+  position: absolute; top: 4px; bottom: 4px; left: 0; right: 0;
+  background: rgba(255, 56, 92, 0.18);
+  z-index: 0;
+}
+/* From endpoint: strip extends to the right (toward the next cell) */
+.dp-cell.from::before {
+  content: "";
+  position: absolute; top: 4px; bottom: 4px; left: 50%; right: 0;
+  background: rgba(255, 56, 92, 0.18);
+  z-index: 0;
+}
+/* To endpoint: strip extends from the left (from the previous cell) */
+.dp-cell.to::before {
+  content: "";
+  position: absolute; top: 4px; bottom: 4px; left: 0; right: 50%;
+  background: rgba(255, 56, 92, 0.18);
+  z-index: 0;
+}
+/* Same-day check-in/check-out — no strip, just the pill */
+.dp-cell.from.to::before { content: none; }
+
+/* Endpoint pill: rose disc on the day number */
+.dp-cell.from .dp-day,
+.dp-cell.to .dp-day {
+  background: var(--rose); color: #fff; font-weight: 700;
+  box-shadow: 0 4px 14px rgba(255, 56, 92, 0.4);
+}
+
+/* Hover-preview range (after picking from, before to) — softer fill */
+.dp-cell.hover-range:not(.in-range):not(.from):not(.to)::before {
+  content: "";
+  position: absolute; top: 4px; bottom: 4px; left: 0; right: 0;
+  background: rgba(255, 56, 92, 0.10);
+  z-index: 0;
+}
+
+/* Festival ring on the day disc — gold outline that survives over the rose pill */
+.dp-cell.festival .dp-day {
+  box-shadow: inset 0 0 0 2px rgba(255, 209, 102, 0.65);
+}
+.dp-cell.festival.from .dp-day,
+.dp-cell.festival.to .dp-day {
+  box-shadow: 0 4px 14px rgba(255, 56, 92, 0.4), inset 0 0 0 2px rgba(255, 209, 102, 0.95);
+}
 
 .dp-legend {
   font-size: 11px; color: var(--ink-soft);
