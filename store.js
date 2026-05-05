@@ -125,8 +125,20 @@ const Store = {
       write(KEYS.bookings, bookings);
       return booking;
     },
+    cancellationQuote(b) {
+      const FREE_WINDOW_MS = 48 * 60 * 60 * 1000;
+      const within = Date.now() - b.createdAt < FREE_WINDOW_MS;
+      const feeRate = within ? 0 : 0.05;
+      const fee = Math.round(b.total * feeRate);
+      const refund = b.total - fee;
+      return { feeRate, fee, refund, freeWindow: within };
+    },
     cancel(id) {
-      const bookings = Store.bookings.all().map(b => b.id === id ? { ...b, status: "cancelled" } : b);
+      const bookings = Store.bookings.all().map(b => {
+        if (b.id !== id || b.status === "cancelled") return b;
+        const q = Store.bookings.cancellationQuote(b);
+        return { ...b, status: "cancelled", cancellationFee: q.fee, refunded: q.refund, cancelledAt: Date.now() };
+      });
       write(KEYS.bookings, bookings);
     },
     remove(id) {

@@ -423,20 +423,27 @@ route("/property/:id", ({ id }) => {
   setTimeout(recalcTotals, 0);
 
   const reserveBtn = el("button", { class: "btn btn-primary btn-block btn-lg" }, "Reserve");
-  reserveBtn.addEventListener("click", () => {
+  reserveBtn.addEventListener("click", async () => {
     const session = Store.session.current();
     const a = new Date(checkInIn.value), b = new Date(checkOutIn.value);
     if (b <= a) { toast("Check-out must be after check-in"); return; }
-    Store.bookings.create({
+    let payment;
+    try {
+      payment = await Payment.collect({ amount: totalsBox._total, listingTitle: l.title });
+    } catch {
+      toast("Payment cancelled");
+      return;
+    }
+    const booking = Store.bookings.create({
       userId: session.userId,
       listingId: l.id,
       checkIn: a.getTime(),
       checkOut: b.getTime(),
       guests: parseInt(guestsIn.value, 10),
-      total: totalsBox._total
+      total: totalsBox._total,
+      payment: { brand: payment.brand, last4: payment.last4, holder: payment.holder, txnId: payment.txnId }
     });
-    toast("Booking confirmed!");
-    navigate("/trips");
+    navigate("/booking/" + booking.id);
   });
 
   const gallery = el("div", { class: "gallery" });
@@ -485,6 +492,65 @@ route("/property/:id", ({ id }) => {
   shell(page);
 });
 
+// ---------------- user: booking confirmation ----------------
+
+route("/booking/:id", ({ id }) => {
+  const session = Store.session.current();
+  const b = Store.bookings.all().find(x => x.id === id);
+  if (!b || b.userId !== session.userId) { navigate("/trips"); return; }
+  const l = Store.listings.byId(b.listingId);
+  const fest = window.festivalForRange(b.checkIn, b.checkOut);
+  const nights = Math.max(1, Math.round((b.checkOut - b.checkIn) / 86400000));
+
+  const page = el("div", { class: "confirm-page" }, [
+    el("div", { class: "confirm-hero" }, [
+      el("div", { class: "confirm-check", html: `
+        <svg viewBox="0 0 80 80" width="80" height="80" aria-hidden="true">
+          <circle class="ring" cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="3"/>
+          <path class="tick" d="M24 42 L36 54 L58 30" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      ` }),
+      el("h1", { class: "confirm-title" }, "Booking confirmed!"),
+      el("p", { class: "confirm-sub" }, `Get ready for your stay in ${l ? l.location : "the UAE"}, ${(session.name || "").split(" ")[0]}.`),
+      el("div", { class: "confirm-id" }, "Reservation · " + b.id.toUpperCase())
+    ]),
+
+    el("div", { class: "confirm-card" }, [
+      l ? el("img", { class: "confirm-img", src: l.images[0], alt: l.title }) : null,
+      el("div", { class: "confirm-info" }, [
+        el("div", { class: "confirm-listing" }, l ? l.title : "Listing"),
+        el("div", { class: "confirm-loc" }, l ? `${l.location}, ${l.country}` : ""),
+        el("div", { class: "confirm-grid" }, [
+          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Check-in"), el("span", { class: "v" }, fmtDate(b.checkIn))]),
+          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Check-out"), el("span", { class: "v" }, fmtDate(b.checkOut))]),
+          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Nights"), el("span", { class: "v" }, String(nights))]),
+          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Guests"), el("span", { class: "v" }, String(b.guests))]),
+          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Status"), el("span", { class: "v" }, el("span", { class: "badge badge-on" }, b.status))])
+        ]),
+        fest ? el("div", { class: "confirm-fest", html: `${fest.emoji} <strong>${fest.name} discount</strong> — 5% off applied because your stay overlaps the festival window.` }) : null,
+        b.payment ? el("div", { class: "confirm-pay", html: `💳 Paid with <strong>Mastercard •••• ${b.payment.last4}</strong> · ref ${b.payment.txnId}` }) : null,
+        el("div", { class: "confirm-total" }, [
+          el("span", {}, "Total paid"),
+          el("strong", {}, fmtMoney(b.total))
+        ])
+      ])
+    ]),
+
+    el("div", { class: "confirm-actions" }, [
+      el("a", { class: "btn btn-primary btn-lg", href: "#/trips" }, "View all trips"),
+      el("a", { class: "btn btn-ghost btn-lg", href: "#/" }, "Browse more stays")
+    ]),
+
+    el("div", { class: "confirm-tips" }, [
+      el("div", { class: "tip", html: "📅 <strong>Cancellation</strong><br>Free cancellation in the first 48 hours. After that, a 5% fee applies and the rest is refunded." }),
+      el("div", { class: "tip", html: "💬 <strong>Questions?</strong><br>Open the chat at the bottom-right or visit My trips to message the host." }),
+      el("div", { class: "tip", html: "🎉 <strong>UAE festivals</strong><br>Stays during Eid, Diwali, National Day, or NYE get 5% off automatically." })
+    ])
+  ]);
+
+  shell(page);
+});
+
 // ---------------- user: trips ----------------
 
 route("/trips", () => {
@@ -496,19 +562,30 @@ route("/trips", () => {
     const cancelBtn = el("button", { class: "del" }, "Cancel");
     cancelBtn.addEventListener("click", async () => {
       if (b.status === "cancelled") return;
-      const ok = await confirmModal({ title: "Cancel this trip?", body: "Your refund policy depends on the host's terms.", confirmText: "Cancel trip", danger: true });
+      const q = Store.bookings.cancellationQuote(b);
+      const body = q.freeWindow
+        ? `You're still within the 48-hour grace window — full refund of ${fmtMoney(b.total)}, no cancellation fee.`
+        : `A 5% cancellation fee applies after the 48-hour grace window.\n\n• Original total: ${fmtMoney(b.total)}\n• Cancellation fee (5%): −${fmtMoney(q.fee)}\n• Refund to your card: ${fmtMoney(q.refund)}`;
+      const ok = await confirmModal({ title: "Cancel this trip?", body, confirmText: q.freeWindow ? "Cancel trip" : `Cancel (fee ${fmtMoney(q.fee)})`, danger: true });
       if (!ok) return;
       Store.bookings.cancel(b.id);
-      toast("Trip cancelled");
+      toast(q.freeWindow ? "Trip cancelled — full refund issued" : `Trip cancelled — ${fmtMoney(q.refund)} refunded`);
       render();
     });
+    const totalCell = b.status === "cancelled"
+      ? el("td", { class: "stack" }, [
+          el("div", { class: "muted strike" }, fmtMoney(b.total)),
+          el("div", { class: "refund-line" }, `Refunded ${fmtMoney(b.refunded ?? b.total)}`),
+          (b.cancellationFee || 0) > 0 ? el("div", { class: "fee-line" }, `Fee ${fmtMoney(b.cancellationFee)}`) : null
+        ])
+      : el("td", {}, fmtMoney(b.total));
     return el("tr", {}, [
       el("td", {}, l ? el("img", { class: "row-img", src: l.images[0] }) : "—"),
       el("td", {}, l ? l.title : "Listing removed"),
       el("td", {}, l ? `${l.location}` : "—"),
       el("td", {}, `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}`),
       el("td", {}, b.guests + ""),
-      el("td", {}, fmtMoney(b.total)),
+      totalCell,
       el("td", {}, el("span", { class: "badge " + (b.status === "cancelled" ? "badge-cancel" : "badge-on") }, b.status)),
       el("td", { class: "actions" }, b.status === "cancelled" ? "" : cancelBtn)
     ]);
