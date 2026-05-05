@@ -44,6 +44,55 @@ function toast(msg) {
   toast._t = setTimeout(() => t.classList.remove("show"), 2400);
 }
 
+// Adults / children stepper popover (anchored, click-outside to close).
+const GuestsPicker = {
+  open({ anchor, adults, children, maxTotal, onChange }) {
+    const pop = el("div", { class: "guests-pop" });
+    function row(label, sub, val, min, max, onDelta) {
+      const dec = el("button", { type: "button", class: "gp-step", "aria-label": "Decrease " + label, disabled: val <= min }, "−");
+      const inc = el("button", { type: "button", class: "gp-step", "aria-label": "Increase " + label, disabled: val >= max }, "+");
+      const num = el("span", { class: "gp-num" }, String(val));
+      dec.addEventListener("click", e => { e.stopPropagation(); onDelta(-1); });
+      inc.addEventListener("click", e => { e.stopPropagation(); onDelta(+1); });
+      return el("div", { class: "gp-row" }, [
+        el("div", { class: "gp-label" }, [el("strong", {}, label), el("span", {}, sub)]),
+        el("div", { class: "gp-stepper" }, [dec, num, inc])
+      ]);
+    }
+    function rerender() {
+      const total = adults + children;
+      pop.innerHTML = "";
+      pop.appendChild(row("Adults", "Ages 13+", adults, 1, maxTotal - children, d => { adults = Math.max(1, Math.min(maxTotal - children, adults + d)); onChange({ adults, children }); rerender(); }));
+      pop.appendChild(row("Children", "Ages 2–12", children, 0, maxTotal - adults, d => { children = Math.max(0, Math.min(maxTotal - adults, children + d)); onChange({ adults, children }); rerender(); }));
+      pop.appendChild(el("div", { class: "gp-foot" }, [
+        el("span", { class: "gp-cap" }, `Up to ${maxTotal} guests · ${total} selected`),
+        el("button", { type: "button", class: "gp-done", onClick: closeAll }, "Done")
+      ]));
+    }
+    function closeAll() {
+      document.removeEventListener("mousedown", outside, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", reposition);
+      pop.remove();
+    }
+    function outside(e) { if (!pop.contains(e.target) && !anchor.contains(e.target)) closeAll(); }
+    function onKey(e) { if (e.key === "Escape") closeAll(); }
+    function reposition() {
+      const r = anchor.getBoundingClientRect();
+      pop.style.left = Math.max(8, r.left + window.scrollX) + "px";
+      pop.style.top = (r.bottom + window.scrollY + 6) + "px";
+      pop.style.width = Math.max(280, r.width) + "px";
+    }
+    rerender();
+    document.body.appendChild(pop);
+    reposition();
+    document.addEventListener("mousedown", outside, true);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", reposition);
+    return { close: closeAll };
+  }
+};
+
 function confirmModal({ title, body, confirmText = "Confirm", danger = false }) {
   return new Promise(resolve => {
     const backdrop = el("div", { class: "modal-backdrop" });
@@ -292,6 +341,9 @@ route("/", () => {
   let q = window.__searchQuery || "";
 
   const fest = window.nextFestival();
+  const promoStrip = el("div", { class: "promo-strip", html:
+    `<span class="ps-icon">🎉</span> <strong>FESTIVAL OFFER LIVE</strong> · enjoy <strong class="ps-pct">5% OFF</strong> any stay overlapping ${fest.emoji} <strong>${fest.name}</strong> · auto-applied at checkout <span class="ps-icon">🎉</span>`
+  });
   const heroEl = el("section", { class: "hero" }, [
     el("div", { class: "hero-sky" }),
     el("div", { class: "hero-sun" }),
@@ -359,7 +411,7 @@ route("/", () => {
   }
   filtered.forEach(l => grid.appendChild(listingCard(l)));
 
-  shell([heroEl, catBar, el("main", { class: "main" }, [grid])]);
+  shell([promoStrip, heroEl, catBar, el("main", { class: "main" }, [grid])]);
   const sb = document.getElementById("globalSearch");
   if (sb && q) sb.value = q;
 });
@@ -390,23 +442,33 @@ route("/property/:id", ({ id }) => {
   const l = Store.listings.byId(id);
   if (!l) { navigate("/"); return; }
 
+  // Booking state
   const today = new Date(); today.setDate(today.getDate() + 7);
   const out = new Date(today); out.setDate(out.getDate() + 5);
-  const inStr = today.toISOString().slice(0, 10);
-  const outStr = out.toISOString().slice(0, 10);
+  let dateIn = today, dateOut = out;
+  let adults = 2, children = 0;
+  const maxGuests = l.guests;
 
-  const checkInIn = el("input", { type: "date", value: inStr, min: new Date().toISOString().slice(0, 10) });
-  const checkOutIn = el("input", { type: "date", value: outStr, min: inStr });
-  const guestsIn = el("select", {}, Array.from({ length: l.guests }, (_, i) => el("option", { value: i + 1 }, (i + 1) + (i === 0 ? " guest" : " guests"))));
-
+  const checkInBtn = el("button", { type: "button", class: "df-cell" }, "");
+  const checkOutBtn = el("button", { type: "button", class: "df-cell" }, "");
+  const guestsBtn = el("button", { type: "button", class: "df-cell df-cell-full" }, "");
   const totalsBox = el("div", { class: "totals" });
+
+  function fmtDayLabel(d) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
+  function refreshTriggers() {
+    checkInBtn.innerHTML = `<label>Check-in</label><div class="val">${fmtDayLabel(dateIn)}</div>`;
+    checkOutBtn.innerHTML = `<label>Check-out</label><div class="val">${fmtDayLabel(dateOut)}</div>`;
+    const total = adults + children;
+    const detail = (children ? `${adults} adult${adults === 1 ? "" : "s"} · ${children} child${children === 1 ? "" : "ren"}` : `${adults} adult${adults === 1 ? "" : "s"}`);
+    guestsBtn.innerHTML = `<label>Guests</label><div class="val">${total} guest${total === 1 ? "" : "s"} <span class="muted">· ${detail}</span></div>`;
+  }
+
   function recalcTotals() {
-    const a = new Date(checkInIn.value), b = new Date(checkOutIn.value);
-    const nights = Math.max(1, Math.round((b - a) / 86400000));
+    const nights = Math.max(1, Math.round((dateOut - dateIn) / 86400000));
     const nightly = nights * l.pricePerNight;
     const cleaning = 245;
     const service = Math.round(nightly * 0.12);
-    const fest = window.festivalForRange(a.getTime(), b.getTime());
+    const fest = window.festivalForRange(dateIn.getTime(), dateOut.getTime());
     const discount = fest ? Math.round(nightly * FESTIVAL_DISCOUNT) : 0;
     const total = nightly + cleaning + service - discount;
     totalsBox.innerHTML = `
@@ -419,14 +481,46 @@ route("/property/:id", ({ id }) => {
     totalsBox._total = total;
     totalsBox._nights = nights;
   }
-  [checkInIn, checkOutIn].forEach(i => i.addEventListener("change", recalcTotals));
+
+  // Calendar trigger
+  let openPicker = null;
+  function openCalendar() {
+    if (openPicker) { openPicker.close(); openPicker = null; return; }
+    openPicker = DatePicker.open({
+      anchor: checkInBtn,
+      from: dateIn, to: dateOut,
+      minDate: new Date(),
+      festivals: window.FESTIVALS,
+      onChange: ({ from, to }) => {
+        if (from) dateIn = from;
+        if (to) dateOut = to;
+        if (from && to) { refreshTriggers(); recalcTotals(); }
+      },
+      onClose: () => { openPicker = null; refreshTriggers(); recalcTotals(); }
+    });
+  }
+  checkInBtn.addEventListener("click", openCalendar);
+  checkOutBtn.addEventListener("click", openCalendar);
+
+  // Guests popover
+  let openGuests = null;
+  function openGuestsPopover() {
+    if (openGuests) { openGuests.close(); openGuests = null; return; }
+    openGuests = GuestsPicker.open({
+      anchor: guestsBtn,
+      adults, children, maxTotal: maxGuests,
+      onChange: ({ adults: a, children: c }) => { adults = a; children = c; refreshTriggers(); }
+    });
+  }
+  guestsBtn.addEventListener("click", openGuestsPopover);
+
+  refreshTriggers();
   setTimeout(recalcTotals, 0);
 
   const reserveBtn = el("button", { class: "btn btn-primary btn-block btn-lg" }, "Reserve");
   reserveBtn.addEventListener("click", async () => {
     const session = Store.session.current();
-    const a = new Date(checkInIn.value), b = new Date(checkOutIn.value);
-    if (b <= a) { toast("Check-out must be after check-in"); return; }
+    if (dateOut <= dateIn) { toast("Check-out must be after check-in"); return; }
     let payment;
     try {
       payment = await Payment.collect({ amount: totalsBox._total, listingTitle: l.title });
@@ -437,9 +531,10 @@ route("/property/:id", ({ id }) => {
     const booking = Store.bookings.create({
       userId: session.userId,
       listingId: l.id,
-      checkIn: a.getTime(),
-      checkOut: b.getTime(),
-      guests: parseInt(guestsIn.value, 10),
+      checkIn: dateIn.getTime(),
+      checkOut: dateOut.getTime(),
+      adults, children,
+      guests: adults + children,
       total: totalsBox._total,
       payment: { brand: payment.brand, last4: payment.last4, holder: payment.holder, txnId: payment.txnId }
     });
@@ -473,15 +568,8 @@ route("/property/:id", ({ id }) => {
       ]),
       el("div", { class: "booking-card" }, [
         el("div", { class: "price-line", html: `<span class="big">${fmtMoney(l.pricePerNight)}</span><span class="per">night</span>` }),
-        el("div", { class: "booking-fields" }, [
-          el("div", { class: "row" }, [
-            el("div", { class: "cell" }, [el("label", {}, "Check-in"), checkInIn]),
-            el("div", { class: "cell" }, [el("label", {}, "Check-out"), checkOutIn])
-          ]),
-          el("div", { style: "padding:10px 12px;border-top:1px solid var(--ink)" }, [
-            el("label", { style: "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em" }, "Guests"),
-            guestsIn
-          ])
+        el("div", { class: "df-grid" }, [
+          checkInBtn, checkOutBtn, guestsBtn
         ]),
         reserveBtn,
         totalsBox
@@ -524,7 +612,7 @@ route("/booking/:id", ({ id }) => {
           el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Check-in"), el("span", { class: "v" }, fmtDate(b.checkIn))]),
           el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Check-out"), el("span", { class: "v" }, fmtDate(b.checkOut))]),
           el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Nights"), el("span", { class: "v" }, String(nights))]),
-          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Guests"), el("span", { class: "v" }, String(b.guests))]),
+          el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Guests"), el("span", { class: "v" }, b.children ? `${b.adults} adults · ${b.children} children` : `${b.adults || b.guests} adult${(b.adults || b.guests) === 1 ? "" : "s"}`)]),
           el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Status"), el("span", { class: "v" }, el("span", { class: "badge badge-on" }, b.status))])
         ]),
         fest ? el("div", { class: "confirm-fest", html: `${fest.emoji} <strong>${fest.name} discount</strong> — 5% off applied because your stay overlaps the festival window.` }) : null,
@@ -584,7 +672,7 @@ route("/trips", () => {
       el("td", {}, l ? l.title : "Listing removed"),
       el("td", {}, l ? `${l.location}` : "—"),
       el("td", {}, `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}`),
-      el("td", {}, b.guests + ""),
+      el("td", {}, b.children ? `${b.adults}a · ${b.children}c` : (b.adults || b.guests) + "a"),
       totalCell,
       el("td", {}, el("span", { class: "badge " + (b.status === "cancelled" ? "badge-cancel" : "badge-on") }, b.status)),
       el("td", { class: "actions" }, b.status === "cancelled" ? "" : cancelBtn)

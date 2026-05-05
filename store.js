@@ -114,11 +114,15 @@ const Store = {
     all: () => read(KEYS.bookings, []),
     byUser: userId => Store.bookings.all().filter(b => b.userId === userId),
     byListing: listingId => Store.bookings.all().filter(b => b.listingId === listingId),
-    create({ userId, listingId, checkIn, checkOut, guests, total, payment }) {
+    create({ userId, listingId, checkIn, checkOut, guests, adults, children, total, payment }) {
       const bookings = Store.bookings.all();
       const booking = {
         id: uid("b"),
-        userId, listingId, checkIn, checkOut, guests, total,
+        userId, listingId, checkIn, checkOut,
+        guests: guests != null ? guests : (adults || 1) + (children || 0),
+        adults: adults != null ? adults : guests,
+        children: children || 0,
+        total,
         payment: payment || null,
         status: "confirmed",
         createdAt: Date.now()
