@@ -28,7 +28,7 @@ const el = (tag, attrs = {}, children = []) => {
   });
   return n;
 };
-const fmtMoney = n => "$" + n.toLocaleString();
+const fmtMoney = n => "AED " + Math.round(n).toLocaleString();
 const fmtDate = ts => new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
 
@@ -151,17 +151,19 @@ function header({ active = "" } = {}) {
     }, 0);
   });
 
+  const runSearch = () => {
+    const v = (document.getElementById("globalSearch")?.value || document.getElementById("globalSearchMobile")?.value || "").trim();
+    window.__searchQuery = v;
+    if (location.hash !== "#/") navigate("/");
+    else render();
+  };
   const headerEl = el("header", { class: "app-header" }, [
     el("div", { class: "header-inner" }, [
       el("a", { class: "brand", href: "#/", html: `${BRAND_SVG}<span>stayly</span>` }),
       el("div", { class: "search-pill" }, [
-        el("input", { id: "globalSearch", placeholder: "Search destinations or stays…", type: "text" }),
-        el("button", { class: "search-btn", onClick: () => {
-          const v = document.getElementById("globalSearch").value.trim();
-          window.__searchQuery = v;
-          if (location.hash !== "#/") navigate("/");
-          else render();
-        }, html: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zm-.7 4.3a6 6 0 1 1 1.4-1.4l4 4a1 1 0 1 1-1.4 1.4l-4-4z"/></svg>Search' })
+        el("input", { id: "globalSearch", placeholder: "Dubai, Abu Dhabi, RAK, Sharjah…", type: "text", onKeydown: e => { if (e.key === "Enter") runSearch(); } }),
+        el("button", { class: "search-btn", onClick: runSearch,
+          html: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zm-.7 4.3a6 6 0 1 1 1.4-1.4l4 4a1 1 0 1 1-1.4 1.4l-4-4z"/></svg>Search' })
       ]),
       el("div", { class: "header-right" }, [
         session.role === "admin"
@@ -169,6 +171,10 @@ function header({ active = "" } = {}) {
           : el("a", { class: "host-link", href: "#/trips" }, "My trips"),
         userMenu
       ])
+    ]),
+    el("div", { class: "search-mobile" }, [
+      el("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "currentColor", html: '<path d="M11 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zm-.7 4.3a6 6 0 1 1 1.4-1.4l4 4a1 1 0 1 1-1.4 1.4l-4-4z"/>' }),
+      el("input", { id: "globalSearchMobile", placeholder: "Search Dubai, Abu Dhabi…", type: "text", onKeydown: e => { if (e.key === "Enter") runSearch(); } })
     ])
   ]);
   return headerEl;
@@ -285,6 +291,45 @@ route("/", () => {
   let activeCat = window.__activeCategory || "all";
   let q = window.__searchQuery || "";
 
+  const fest = window.nextFestival();
+  const heroEl = el("section", { class: "hero" }, [
+    el("div", { class: "hero-sky" }),
+    el("div", { class: "hero-sun" }),
+    el("div", { class: "hero-cloud cloud-1", html: "☁️" }),
+    el("div", { class: "hero-cloud cloud-2", html: "☁️" }),
+    el("div", { class: "hero-skyline", html: `
+      <svg viewBox="0 0 1200 200" preserveAspectRatio="xMidYEnd slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g fill="rgba(34, 34, 34, 0.92)">
+          <rect x="40"  y="120" width="60"  height="80"/>
+          <rect x="110" y="90"  width="40"  height="110"/>
+          <rect x="160" y="110" width="55"  height="90"/>
+          <rect x="225" y="60"  width="35"  height="140"/>
+          <polygon points="600,200 600,10 615,40 630,10 630,200"/>
+          <rect x="660" y="75"  width="50"  height="125"/>
+          <rect x="720" y="100" width="45"  height="100"/>
+          <rect x="775" y="55"  width="40"  height="145"/>
+          <rect x="825" y="120" width="50"  height="80"/>
+          <rect x="885" y="85"  width="35"  height="115"/>
+          <rect x="935" y="115" width="60"  height="85"/>
+          <rect x="1010" y="95" width="40"  height="105"/>
+          <rect x="1060" y="130" width="55" height="70"/>
+        </g>
+        <g fill="rgba(34, 34, 34, 0.55)">
+          <path d="M280 200 Q 320 130 360 200 Z"/>
+          <path d="M360 200 Q 420 110 480 200 Z"/>
+          <path d="M480 200 Q 530 140 580 200 Z"/>
+        </g>
+      </svg>
+    ` }),
+    el("div", { class: "hero-palm palm-l", html: "🌴" }),
+    el("div", { class: "hero-palm palm-r", html: "🌴" }),
+    el("div", { class: "hero-content" }, [
+      el("h1", { class: "hero-title" }, "Stay in the Emirates."),
+      el("p", { class: "hero-sub" }, "From Burj Khalifa sky suites to desert tents under the stars — find your next stay across the UAE."),
+      el("div", { class: "hero-chip", html: `🎉 5% off festival stays · next: ${fest.emoji} ${fest.name}` })
+    ])
+  ]);
+
   const catBar = el("div", { class: "categories-bar" }, [
     el("div", { class: "categories-inner" }, CATEGORIES.map(c => {
       const btn = el("button", {
@@ -314,7 +359,7 @@ route("/", () => {
   }
   filtered.forEach(l => grid.appendChild(listingCard(l)));
 
-  shell([catBar, el("main", { class: "main" }, [grid])]);
+  shell([heroEl, catBar, el("main", { class: "main" }, [grid])]);
   const sb = document.getElementById("globalSearch");
   if (sb && q) sb.value = q;
 });
@@ -359,11 +404,14 @@ route("/property/:id", ({ id }) => {
     const a = new Date(checkInIn.value), b = new Date(checkOutIn.value);
     const nights = Math.max(1, Math.round((b - a) / 86400000));
     const nightly = nights * l.pricePerNight;
-    const cleaning = 65;
+    const cleaning = 245;
     const service = Math.round(nightly * 0.12);
-    const total = nightly + cleaning + service;
+    const fest = window.festivalForRange(a.getTime(), b.getTime());
+    const discount = fest ? Math.round(nightly * FESTIVAL_DISCOUNT) : 0;
+    const total = nightly + cleaning + service - discount;
     totalsBox.innerHTML = `
       <div class="row"><span>${fmtMoney(l.pricePerNight)} × ${nights} night${nights === 1 ? "" : "s"}</span><span>${fmtMoney(nightly)}</span></div>
+      ${fest ? `<div class="row discount"><span>${fest.emoji} ${fest.name} discount (5%)</span><span>−${fmtMoney(discount)}</span></div>` : ""}
       <div class="row"><span>Cleaning fee</span><span>${fmtMoney(cleaning)}</span></div>
       <div class="row"><span>Service fee</span><span>${fmtMoney(service)}</span></div>
       <div class="total"><span>Total</span><span>${fmtMoney(total)}</span></div>

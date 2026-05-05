@@ -6,7 +6,7 @@ const KEYS = {
   session: "stayly.session",
   listings: "stayly.listings",
   bookings: "stayly.bookings",
-  seeded: "stayly.seeded.v1"
+  seeded: "stayly.seeded.v2"
 };
 
 function read(key, fallback) {
