@@ -68,57 +68,67 @@ const MealsPicker = {
       pop.innerHTML = "";
       pop.appendChild(el("div", { class: "mp-head" }, [
         el("div", { class: "mp-title" }, "Add meals"),
-        el("div", { class: "mp-sub" }, "Continental menu · per person per day · select what to include")
+        el("div", { class: "mp-sub" }, "Continental menu · breakfast complimentary · lunch & dinner billed per person per day")
       ]));
       MEALS.forEach(meal => {
-        const cur = state[meal.id] || { enabled: false, items: [] };
+        const cur = state[meal.id] || { enabled: !!meal.free, items: [] };
         const enabled = cur.enabled;
         const itemsBox = el("div", { class: "mp-items" });
         meal.menu.forEach(item => {
-          const checked = cur.items.includes(item);
-          const cb = el("input", { type: "checkbox" });
-          cb.checked = checked;
-          if (!enabled) cb.disabled = true;
-          cb.addEventListener("change", () => {
-            const next = state[meal.id] || { enabled: true, items: [] };
-            if (cb.checked) next.items.push(item);
-            else next.items = next.items.filter(i => i !== item);
-            state[meal.id] = next;
-            onChange && onChange(state);
-            rerender();
-          });
-          const lbl = el("label", { class: "mp-item" + (enabled ? "" : " disabled") }, [cb, document.createTextNode(" " + item)]);
-          itemsBox.appendChild(lbl);
+          const checked = cur.items.includes(item.name);
+          const card = el("label", { class: "mp-card" + (enabled ? "" : " disabled") + (checked ? " selected" : "") }, [
+            el("img", { class: "mp-card-img", src: item.image, alt: item.name, loading: "lazy" }),
+            el("div", { class: "mp-card-overlay" }),
+            el("span", { class: "mp-card-name" }, item.name),
+            (function(){
+              const cb = el("input", { type: "checkbox", class: "mp-card-cb" });
+              cb.checked = checked;
+              if (!enabled) cb.disabled = true;
+              cb.addEventListener("change", () => {
+                const next = state[meal.id] || { enabled: true, items: [] };
+                if (!next.enabled) next.enabled = true;
+                if (cb.checked) next.items.push(item.name);
+                else next.items = next.items.filter(i => i !== item.name);
+                state[meal.id] = next;
+                onChange && onChange(state);
+                rerender();
+              });
+              return cb;
+            })()
+          ]);
+          itemsBox.appendChild(card);
         });
         const toggle = el("input", { type: "checkbox" });
         toggle.checked = enabled;
+        if (meal.free) toggle.disabled = true; // breakfast is always-on
         toggle.addEventListener("change", () => {
           const next = state[meal.id] || { enabled: false, items: [] };
           next.enabled = toggle.checked;
-          if (next.enabled && next.items.length === 0) next.items = meal.menu.slice(0, 4);
+          if (next.enabled && next.items.length === 0) next.items = meal.menu.slice(0, 4).map(i => i.name);
           state[meal.id] = next;
           onChange && onChange(state);
           rerender();
         });
-        const section = el("section", { class: "mp-section" + (enabled ? " on" : "") }, [
+        const priceCell = meal.free
+          ? el("div", { class: "mp-price free" }, [el("strong", {}, "FREE"), el("span", {}, "with booking")])
+          : el("div", { class: "mp-price" }, [el("strong", {}, fmtMoney(meal.pricePerPerson)), el("span", {}, "/ person / day")]);
+        const section = el("section", { class: "mp-section" + (enabled ? " on" : "") + (meal.free ? " free" : "") }, [
           el("header", { class: "mp-row" }, [
             el("div", { class: "mp-meal" }, [
               el("span", { class: "mp-emoji" }, meal.emoji),
               el("div", {}, [el("strong", {}, meal.label), el("div", { class: "mp-serving" }, meal.serving)])
             ]),
-            el("div", { class: "mp-price" }, [
-              el("strong", {}, fmtMoney(meal.pricePerPerson)),
-              el("span", {}, "/ person / day")
-            ]),
+            priceCell,
             toggle
           ]),
           itemsBox
         ]);
         pop.appendChild(section);
       });
-      const total = MEALS.reduce((s, m) => s + (state[m.id]?.enabled ? m.pricePerPerson : 0), 0);
+      const paid = MEALS.filter(m => !m.free && state[m.id]?.enabled);
+      const total = paid.reduce((s, m) => s + m.pricePerPerson, 0);
       pop.appendChild(el("div", { class: "mp-foot" }, [
-        el("span", { class: "mp-totline" }, total ? `${fmtMoney(total)} per person per day` : "No meals selected"),
+        el("span", { class: "mp-totline" }, total ? `+${fmtMoney(total)} per person per day` : "Breakfast is included — add lunch or dinner if you'd like"),
         el("button", { type: "button", class: "mp-done", onClick: closeAll }, "Done")
       ]));
     }
@@ -582,7 +592,10 @@ route("/property/:id", ({ id }) => {
   const mealsBtn = el("button", { type: "button", class: "df-cell df-cell-full" }, "");
   const totalsBox = el("div", { class: "totals" });
 
-  let meals = {}; // { breakfast:{enabled:bool, items:[]}, lunch:{...}, dinner:{...} }
+  // Breakfast is complimentary and on by default; lunch + dinner are optional add-ons.
+  let meals = {
+    breakfast: { enabled: true, items: MEALS[0].menu.slice(0, 4).map(i => i.name) }
+  };
 
   function fmtDayLabel(d) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
   function refreshTriggers() {
@@ -591,9 +604,9 @@ route("/property/:id", ({ id }) => {
     const total = adults + children;
     const detail = (children ? `${adults} adult${adults === 1 ? "" : "s"} · ${children} child${children === 1 ? "" : "ren"}` : `${adults} adult${adults === 1 ? "" : "s"}`);
     guestsBtn.innerHTML = `<label>Guests</label><div class="val">${total} guest${total === 1 ? "" : "s"} <span class="muted">· ${detail}</span></div>`;
-    const mealCount = MEALS.filter(m => meals[m.id]?.enabled).length;
-    const mealText = mealCount === 0 ? "None — add for a chef-prepared menu" :
-      MEALS.filter(m => meals[m.id]?.enabled).map(m => `${m.emoji} ${m.label.replace("Continental ", "")}`).join(" · ");
+    const enabled = MEALS.filter(m => meals[m.id]?.enabled);
+    const mealText = enabled.length === 0 ? "None — add for a chef-prepared menu" :
+      enabled.map(m => `${m.emoji} ${m.label.replace("Continental ", "")}${m.free ? " <span class='mp-free-pill'>free</span>" : ""}`).join(" · ");
     mealsBtn.innerHTML = `<label>Meals</label><div class="val">${mealText}</div>`;
   }
 
@@ -605,13 +618,18 @@ route("/property/:id", ({ id }) => {
     const fest = window.festivalForRange(dateIn.getTime(), dateOut.getTime());
     const discount = fest ? Math.round(nightly * FESTIVAL_DISCOUNT) : 0;
     const guestCount = adults + children;
-    const enabledMeals = MEALS.filter(m => meals[m.id]?.enabled);
-    const mealsCost = enabledMeals.reduce((s, m) => s + m.pricePerPerson, 0) * guestCount * nights;
+    const paidMeals = MEALS.filter(m => meals[m.id]?.enabled && !m.free);
+    const freeMeals = MEALS.filter(m => meals[m.id]?.enabled && m.free);
+    const mealsCost = paidMeals.reduce((s, m) => s + m.pricePerPerson, 0) * guestCount * nights;
     const total = nightly + cleaning + service - discount + mealsCost;
-    const mealRows = enabledMeals.map(m => {
+    const freeRows = freeMeals.map(m =>
+      `<div class="row meal free-meal"><span>${m.emoji} ${m.label}</span><span>Included</span></div>`
+    ).join("");
+    const paidRows = paidMeals.map(m => {
       const sub = m.pricePerPerson * guestCount * nights;
       return `<div class="row meal"><span>${m.emoji} ${m.label} · ${guestCount}p × ${nights}d</span><span>${fmtMoney(sub)}</span></div>`;
     }).join("");
+    const mealRows = freeRows + paidRows;
     totalsBox.innerHTML = `
       <div class="row"><span>${fmtMoney(l.pricePerNight)} × ${nights} night${nights === 1 ? "" : "s"}</span><span>${fmtMoney(nightly)}</span></div>
       ${fest ? `<div class="row discount"><span>${fest.emoji} ${fest.name} discount (5%)</span><span>−${fmtMoney(discount)}</span></div>` : ""}

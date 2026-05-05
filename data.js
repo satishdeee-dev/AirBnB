@@ -318,17 +318,18 @@ const MEALS = [
     id: "breakfast",
     label: "Continental breakfast",
     emoji: "🥐",
-    pricePerPerson: 65,
-    serving: "Served 7:00 – 10:30",
+    pricePerPerson: 0,
+    free: true,
+    serving: "Served 7:00 – 10:30 · complimentary with every booking",
     menu: [
-      "Eggs Benedict with Hollandaise",
-      "Avocado Toast on Sourdough",
-      "Buttery Croissant & Pain au Chocolat",
-      "Belgian Waffles with Berries",
-      "Greek Yogurt Parfait",
-      "Smoked Salmon Bagel",
-      "Buttermilk Pancakes with Maple",
-      "Eggs Florentine"
+      { name: "Eggs Benedict with Hollandaise", image: "https://images.unsplash.com/photo-1608039755401-742074f0548d?w=600&q=80" },
+      { name: "Avocado Toast on Sourdough", image: "https://images.unsplash.com/photo-1603046891744-1f76eb10aec3?w=600&q=80" },
+      { name: "Buttery Croissant & Pain au Chocolat", image: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=600&q=80" },
+      { name: "Belgian Waffles with Berries", image: "https://images.unsplash.com/photo-1562376552-0d160a2f238d?w=600&q=80" },
+      { name: "Greek Yogurt Parfait", image: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&q=80" },
+      { name: "Smoked Salmon Bagel", image: "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=600&q=80" },
+      { name: "Buttermilk Pancakes with Maple", image: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=600&q=80" },
+      { name: "Eggs Florentine", image: "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=600&q=80" }
     ]
   },
   {
@@ -338,14 +339,14 @@ const MEALS = [
     pricePerPerson: 95,
     serving: "Served 12:30 – 15:00",
     menu: [
-      "Caesar Salad with Anchovies",
-      "Caprese Sandwich on Ciabatta",
-      "Beef Carpaccio with Rocket",
-      "Wild Mushroom Risotto",
-      "Grilled Salmon Filet",
-      "Chicken Parmigiana",
-      "Roasted Tomato & Basil Soup",
-      "Margherita Pizza"
+      { name: "Caesar Salad with Anchovies", image: "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=600&q=80" },
+      { name: "Caprese Sandwich on Ciabatta", image: "https://images.unsplash.com/photo-1539252554935-80c8cabc1eaf?w=600&q=80" },
+      { name: "Beef Carpaccio with Rocket", image: "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600&q=80" },
+      { name: "Wild Mushroom Risotto", image: "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=600&q=80" },
+      { name: "Grilled Salmon Filet", image: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600&q=80" },
+      { name: "Chicken Parmigiana", image: "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=600&q=80" },
+      { name: "Roasted Tomato & Basil Soup", image: "https://images.unsplash.com/photo-1547592180-85f173990554?w=600&q=80" },
+      { name: "Margherita Pizza", image: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=600&q=80" }
     ]
   },
   {
@@ -355,14 +356,14 @@ const MEALS = [
     pricePerPerson: 125,
     serving: "Served 19:00 – 22:30",
     menu: [
-      "Filet Mignon with Truffle Jus",
-      "Lobster Thermidor",
-      "Duck à l'Orange",
-      "Beef Wellington",
-      "Veal Osso Buco with Gremolata",
-      "Pan-Seared Halibut",
-      "Vegetable Wellington",
-      "Lamb Rack with Rosemary"
+      { name: "Filet Mignon with Truffle Jus", image: "https://images.unsplash.com/photo-1546964124-0cce460f38ef?w=600&q=80" },
+      { name: "Lobster Thermidor", image: "https://images.unsplash.com/photo-1565299543923-37dd37887442?w=600&q=80" },
+      { name: "Duck à l'Orange", image: "https://images.unsplash.com/photo-1432139509613-5c4255815697?w=600&q=80" },
+      { name: "Beef Wellington", image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=600&q=80" },
+      { name: "Veal Osso Buco with Gremolata", image: "https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=600&q=80" },
+      { name: "Pan-Seared Halibut", image: "https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=600&q=80" },
+      { name: "Vegetable Wellington", image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600&q=80" },
+      { name: "Lamb Rack with Rosemary", image: "https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=600&q=80" }
     ]
   }
 ];
