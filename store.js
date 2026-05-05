@@ -6,6 +6,7 @@ const KEYS = {
   session: "stayly.session",
   listings: "stayly.listings",
   bookings: "stayly.bookings",
+  tickets: "stayly.tickets",
   seeded: "stayly.seeded.v2"
 };
 
@@ -113,11 +114,12 @@ const Store = {
     all: () => read(KEYS.bookings, []),
     byUser: userId => Store.bookings.all().filter(b => b.userId === userId),
     byListing: listingId => Store.bookings.all().filter(b => b.listingId === listingId),
-    create({ userId, listingId, checkIn, checkOut, guests, total }) {
+    create({ userId, listingId, checkIn, checkOut, guests, total, payment }) {
       const bookings = Store.bookings.all();
       const booking = {
         id: uid("b"),
         userId, listingId, checkIn, checkOut, guests, total,
+        payment: payment || null,
         status: "confirmed",
         createdAt: Date.now()
       };
@@ -147,9 +149,29 @@ const Store = {
     }
   },
 
+  // ---- support tickets (from chat widget) ----
+  tickets: {
+    all: () => read(KEYS.tickets, []),
+    create({ name, email, message }) {
+      const tickets = Store.tickets.all();
+      const t = { id: uid("t"), name, email, message, status: "open", createdAt: Date.now() };
+      tickets.unshift(t);
+      write(KEYS.tickets, tickets);
+      return t;
+    },
+    update(id, patch) {
+      const tickets = Store.tickets.all().map(t => t.id === id ? { ...t, ...patch } : t);
+      write(KEYS.tickets, tickets);
+    },
+    remove(id) {
+      const tickets = Store.tickets.all().filter(t => t.id !== id);
+      write(KEYS.tickets, tickets);
+    }
+  },
+
   // ---- danger zone (for admin reset) ----
   resetSeed() {
-    [KEYS.users, KEYS.session, KEYS.listings, KEYS.bookings, KEYS.seeded].forEach(k => localStorage.removeItem(k));
+    [KEYS.users, KEYS.session, KEYS.listings, KEYS.bookings, KEYS.tickets, KEYS.seeded].forEach(k => localStorage.removeItem(k));
     seedIfNeeded();
   }
 };

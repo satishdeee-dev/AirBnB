@@ -315,9 +315,7 @@
       const email = fd.get("email");
       const message = fd.get("message");
       try {
-        const tickets = JSON.parse(localStorage.getItem("stayly.tickets") || "[]");
-        tickets.unshift({ id: "t_" + Math.random().toString(36).slice(2, 8), name, email, message, createdAt: Date.now() });
-        localStorage.setItem("stayly.tickets", JSON.stringify(tickets));
+        if (window.Store && Store.tickets) Store.tickets.create({ name, email, message });
       } catch {}
       wrap.remove();
       supportFormVisible = false;

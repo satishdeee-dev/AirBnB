@@ -611,17 +611,22 @@ route("/trips", () => {
 // ---------------- admin shell ----------------
 
 function adminShell(active, content) {
+  const openTickets = Store.tickets.all().filter(t => t.status !== "resolved").length;
   const links = [
     { href: "#/admin", label: "Dashboard", id: "dash", icon: "📊" },
     { href: "#/admin/listings", label: "Listings", id: "listings", icon: "🏘" },
     { href: "#/admin/bookings", label: "Bookings", id: "bookings", icon: "📅" },
+    { href: "#/admin/payments", label: "Payments", id: "payments", icon: "💳" },
+    { href: "#/admin/cancellations", label: "Cancellations", id: "cancellations", icon: "↩️" },
+    { href: "#/admin/tickets", label: "Tickets", id: "tickets", icon: "💬", badge: openTickets || null },
     { href: "#/admin/users", label: "Users", id: "users", icon: "👥" }
   ];
   const side = el("aside", { class: "admin-side" }, [
     el("h4", {}, "Admin"),
     ...links.map(l => el("a", { href: l.href, class: l.id === active ? "active" : "" }, [
       el("span", {}, l.icon),
-      el("span", {}, l.label)
+      el("span", {}, l.label),
+      l.badge ? el("span", { class: "side-badge" }, String(l.badge)) : null
     ]))
   ]);
   const main = el("main", { class: "admin-main" }, content);
@@ -634,7 +639,10 @@ route("/admin", () => {
   const listings = Store.listings.all();
   const bookings = Store.bookings.all();
   const users = Store.users.all();
+  const tickets = Store.tickets.all();
+  const openTickets = tickets.filter(t => t.status !== "resolved").length;
   const revenue = bookings.filter(b => b.status !== "cancelled").reduce((s, b) => s + b.total, 0);
+  const refunded = bookings.filter(b => b.status === "cancelled").reduce((s, b) => s + (b.refunded || 0), 0);
 
   const recent = bookings.slice(0, 5).map(b => {
     const l = Store.listings.byId(b.listingId);
@@ -654,8 +662,10 @@ route("/admin", () => {
     el("div", { class: "stat-grid" }, [
       stat("Total listings", listings.length, "+" + Math.max(0, listings.length - 12) + " from seed"),
       stat("Total bookings", bookings.length, bookings.length ? "Across all time" : "No bookings yet"),
-      stat("Revenue", fmtMoney(revenue), "Confirmed bookings only"),
-      stat("Users", users.length, users.filter(u => u.role === "user").length + " guests · " + users.filter(u => u.role === "admin").length + " admins")
+      stat("Revenue", fmtMoney(revenue), refunded ? `${fmtMoney(refunded)} refunded` : "Confirmed bookings only"),
+      stat("Users", users.length, users.filter(u => u.role === "user").length + " guests · " + users.filter(u => u.role === "admin").length + " admins"),
+      stat("Open tickets", openTickets, tickets.length ? `${tickets.length - openTickets} resolved` : "Submitted via chat"),
+      stat("Mastercard txns", bookings.filter(b => b.payment).length, "Captured by gateway")
     ]),
     el("h2", { style: "font-size:18px;margin:0 0 12px" }, "Recent bookings"),
     bookings.length ? el("div", { class: "table-wrap" }, [
@@ -855,6 +865,151 @@ route("/admin/bookings", () => {
     ]) : el("div", { class: "empty" }, [el("h3", {}, "No bookings yet"), el("p", {}, "Reservations will appear here as guests book.")])
   ];
   shell(adminShell("bookings", content));
+});
+
+// ---------------- admin: payments ----------------
+
+route("/admin/payments", () => {
+  const all = Store.bookings.all();
+  const paid = all.filter(b => b.payment);
+  const grossRevenue = paid.filter(b => b.status !== "cancelled").reduce((s, b) => s + b.total, 0);
+  const refundedTotal = paid.filter(b => b.status === "cancelled").reduce((s, b) => s + (b.refunded || 0), 0);
+  const feesCollected = paid.filter(b => b.status === "cancelled").reduce((s, b) => s + (b.cancellationFee || 0), 0);
+  const netRevenue = grossRevenue + feesCollected;
+
+  const rows = paid.map(b => {
+    const u = Store.users.all().find(x => x.id === b.userId);
+    const l = Store.listings.byId(b.listingId);
+    const isCancelled = b.status === "cancelled";
+    return el("tr", {}, [
+      el("td", { class: "mono" }, b.payment.txnId),
+      el("td", {}, fmtDate(b.createdAt)),
+      el("td", {}, u ? u.name : "—"),
+      el("td", {}, l ? l.title : "—"),
+      el("td", { html: `<span class="mc-pill">💳 mc</span> •••• ${escapeHtml(b.payment.last4)}` }),
+      el("td", {}, fmtMoney(b.total)),
+      el("td", {}, isCancelled ? `−${fmtMoney(b.refunded || 0)}` : "—"),
+      el("td", {}, el("span", { class: "badge " + (isCancelled ? "badge-cancel" : "badge-on") }, isCancelled ? "refunded" : "captured"))
+    ]);
+  });
+
+  const content = [
+    el("h1", {}, "Payments"),
+    el("p", { class: "sub" }, paid.length + " transaction" + (paid.length === 1 ? "" : "s") + " · all charges processed via Mastercard ID Check."),
+    el("div", { class: "stat-grid" }, [
+      stat("Gross revenue", fmtMoney(grossRevenue), "Confirmed bookings"),
+      stat("Refunds issued", fmtMoney(refundedTotal), `${paid.filter(b => b.status === "cancelled").length} cancellations`),
+      stat("Fees collected", fmtMoney(feesCollected), "5% cancellation fee"),
+      stat("Net revenue", fmtMoney(netRevenue), "Gross + fees")
+    ]),
+    paid.length ? el("div", { class: "table-wrap" }, [
+      el("table", { class: "table" }, [
+        el("thead", {}, el("tr", {}, ["Txn ref", "Date", "Guest", "Listing", "Card", "Amount", "Refunded", "Status"].map(h => el("th", {}, h)))),
+        el("tbody", {}, rows)
+      ])
+    ]) : el("div", { class: "empty" }, [
+      el("h3", {}, "No payments yet"),
+      el("p", {}, "When guests reserve and complete Mastercard checkout, their transactions appear here.")
+    ])
+  ];
+  shell(adminShell("payments", content));
+});
+
+// ---------------- admin: cancellations ----------------
+
+route("/admin/cancellations", () => {
+  const cancelled = Store.bookings.all().filter(b => b.status === "cancelled");
+  const allBookings = Store.bookings.all();
+
+  const totalRefunded = cancelled.reduce((s, b) => s + (b.refunded || 0), 0);
+  const totalFees     = cancelled.reduce((s, b) => s + (b.cancellationFee || 0), 0);
+  const grossCharged  = cancelled.reduce((s, b) => s + (b.total || 0), 0);
+  const cancelRate    = allBookings.length ? (cancelled.length / allBookings.length * 100).toFixed(1) : "0";
+  const free   = cancelled.filter(b => (b.cancellationFee || 0) === 0).length;
+  const feed   = cancelled.length - free;
+
+  const rows = cancelled.map(b => {
+    const u = Store.users.all().find(x => x.id === b.userId);
+    const l = Store.listings.byId(b.listingId);
+    const reasonChip = (b.cancellationFee || 0) === 0
+      ? el("span", { class: "badge badge-on" }, "free window")
+      : el("span", { class: "badge badge-cancel" }, "5% fee");
+    return el("tr", {}, [
+      el("td", { class: "mono" }, b.id),
+      el("td", {}, fmtDate(b.cancelledAt || b.createdAt)),
+      el("td", {}, u ? u.name : "—"),
+      el("td", {}, l ? l.title : "—"),
+      el("td", {}, fmtMoney(b.total)),
+      el("td", { class: "fee-cell" }, (b.cancellationFee || 0) > 0 ? `−${fmtMoney(b.cancellationFee)}` : "—"),
+      el("td", { class: "refund-cell" }, fmtMoney(b.refunded ?? b.total)),
+      el("td", {}, reasonChip)
+    ]);
+  });
+
+  const content = [
+    el("h1", {}, "Cancellations"),
+    el("p", { class: "sub" }, cancelled.length + " cancelled · " + cancelRate + "% cancellation rate"),
+    el("div", { class: "stat-grid" }, [
+      stat("Total cancelled", cancelled.length, `${free} free · ${feed} with fee`),
+      stat("Original charged", fmtMoney(grossCharged), "Before refunds"),
+      stat("Refunded to guests", fmtMoney(totalRefunded), "Returned to cards"),
+      stat("Fees retained", fmtMoney(totalFees), "5% of post-grace cancels")
+    ]),
+    cancelled.length ? el("div", { class: "table-wrap" }, [
+      el("table", { class: "table" }, [
+        el("thead", {}, el("tr", {}, ["Booking", "Cancelled", "Guest", "Listing", "Charged", "Fee", "Refunded", "Window"].map(h => el("th", {}, h)))),
+        el("tbody", {}, rows)
+      ])
+    ]) : el("div", { class: "empty" }, [
+      el("h3", {}, "No cancellations yet"),
+      el("p", {}, "When a guest cancels a booking from My trips, the refund summary appears here.")
+    ])
+  ];
+  shell(adminShell("cancellations", content));
+});
+
+// ---------------- admin: tickets ----------------
+
+route("/admin/tickets", () => {
+  const all = Store.tickets.all();
+  const open = all.filter(t => t.status !== "resolved");
+
+  const rows = all.map(t => {
+    const isOpen = t.status !== "resolved";
+    const resolveBtn = el("button", { onClick: () => { Store.tickets.update(t.id, { status: "resolved", resolvedAt: Date.now() }); toast("Marked resolved"); render(); } }, "Resolve");
+    const reopenBtn = el("button", { onClick: () => { Store.tickets.update(t.id, { status: "open", resolvedAt: null }); toast("Reopened"); render(); } }, "Reopen");
+    const delBtn = el("button", { class: "del", onClick: async () => {
+      const ok = await confirmModal({ title: "Delete this ticket?", body: "The original message will be permanently removed.", confirmText: "Delete", danger: true });
+      if (!ok) return;
+      Store.tickets.remove(t.id); toast("Ticket deleted"); render();
+    } }, "Delete");
+    return el("tr", {}, [
+      el("td", {}, fmtDate(t.createdAt)),
+      el("td", {}, t.name),
+      el("td", { html: `<a href="mailto:${escapeHtml(t.email)}" style="color:var(--rose)">${escapeHtml(t.email)}</a>` }),
+      el("td", { class: "ticket-msg" }, t.message),
+      el("td", {}, el("span", { class: "badge " + (isOpen ? "badge-on" : "badge-off") }, t.status)),
+      el("td", { class: "actions" }, [isOpen ? resolveBtn : reopenBtn, delBtn])
+    ]);
+  });
+
+  const content = [
+    el("h1", {}, "Support tickets"),
+    el("p", { class: "sub" }, open.length + " open · " + (all.length - open.length) + " resolved · submitted via the chat widget."),
+    el("div", { class: "tickets-hint" }, [
+      el("span", {}, "Try it: open the chat at the bottom-right, type \"talk to support\", and send a test ticket — it'll appear here.")
+    ]),
+    all.length ? el("div", { class: "table-wrap" }, [
+      el("table", { class: "table" }, [
+        el("thead", {}, el("tr", {}, ["Date", "Name", "Email", "Message", "Status", ""].map(h => el("th", {}, h)))),
+        el("tbody", {}, rows)
+      ])
+    ]) : el("div", { class: "empty" }, [
+      el("h3", {}, "No tickets yet"),
+      el("p", {}, "When guests submit the contact form in the chat widget, their requests appear here.")
+    ])
+  ];
+  shell(adminShell("tickets", content));
 });
 
 // ---------------- admin: users ----------------

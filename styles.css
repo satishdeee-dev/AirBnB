@@ -506,6 +506,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 }
 .admin-side a:hover { background: var(--bg-elev); }
 .admin-side a.active { background: var(--rose); color: #fff; }
+.admin-side a .side-badge {
+  margin-left: auto;
+  background: var(--rose); color: #fff;
+  font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 999px;
+  min-width: 18px; text-align: center;
+}
+.admin-side a.active .side-badge { background: #fff; color: var(--rose); }
 .admin-main { padding: 32px 40px; max-width: 1100px; }
 .admin-main h1 { margin: 0 0 4px; font-size: 28px; }
 .admin-main .sub { color: var(--ink-soft); margin: 0 0 24px; }
@@ -554,6 +562,30 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 .badge-cancel { background: rgba(248, 113, 113, 0.15); color: var(--bad); }
 .badge-admin { background: rgba(255, 56, 92, 0.18); color: var(--rose); }
 .badge-user { background: rgba(147, 197, 253, 0.15); color: var(--info); }
+
+.mono { font-family: ui-monospace, "Cascadia Mono", "Menlo", monospace; font-size: 12px; color: var(--ink-soft); }
+.mc-pill {
+  display: inline-block;
+  background: linear-gradient(90deg, #eb001b, #f79e1b);
+  color: #fff; font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 4px;
+  letter-spacing: 0.04em;
+  margin-right: 6px;
+}
+.ticket-msg {
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+}
+.tickets-hint {
+  background: var(--bg-soft); border: 1px dashed var(--line);
+  border-radius: var(--radius-md); padding: 10px 14px;
+  margin-bottom: 16px; color: var(--ink-soft); font-size: 13px;
+}
+.fee-cell { color: var(--bad); font-weight: 600; }
+.refund-cell { color: var(--good); font-weight: 600; }
 
 .toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px;
