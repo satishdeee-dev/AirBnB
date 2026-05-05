@@ -37,7 +37,7 @@
     });
   }
 
-  function open({ anchor, from, to, minDate, festivals, onChange, onClose }) {
+  function open({ anchor, from, to, focus, minDate, festivals, onChange, onClose }) {
     const today = startOfDay(new Date());
     const min = minDate ? startOfDay(minDate) : today;
 
@@ -45,9 +45,13 @@
     let selFrom = from ? startOfDay(from) : null;
     let selTo   = to   ? startOfDay(to)   : null;
     let hoverDate = null;
-    let viewStart = startOfDay(addMonths(selFrom || today, 0));
+    let viewStart = startOfDay(addMonths((focus === "out" && selTo) || selFrom || today, 0));
     viewStart.setDate(1);
-    let phase = selFrom && !selTo ? "out" : "in"; // which date are we picking next
+    // Phase: which date is the next click going to set?
+    // - focus "out" with both set → user wants to change check-out only.
+    // - selFrom && !selTo → mid-selection.
+    // - else (both set or both null) → start fresh from check-in.
+    let phase = (focus === "out" && selFrom) ? "out" : (selFrom && !selTo ? "out" : "in");
 
     const pop = el("div", { class: "datepicker-pop", role: "dialog", "aria-label": "Pick check-in and check-out dates" });
 

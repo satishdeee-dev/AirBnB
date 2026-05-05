@@ -13,7 +13,12 @@
 (async function boot() {
   Store.init();
   await Supa.init();
-  Supa.onChange(() => render());
+  Supa.onChange(() => {
+    // Skip re-render if an overlay is open — the user is mid-interaction.
+    // The cache is still updated; rendering will pick it up on the next nav.
+    if (document.querySelector(".datepicker-pop, .guests-pop, .meals-pop, .pay-backdrop, .modal-backdrop, .chat-support")) return;
+    render();
+  });
   await Supa.bootstrap();
   render();
 })();
@@ -50,6 +55,106 @@ function toast(msg) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => t.classList.remove("show"), 2400);
 }
+
+// Meals add-on popover. Toggle each meal type and pick which menu items
+// to include. Pricing is per person per day per meal.
+const MealsPicker = {
+  open({ anchor, selection, onChange }) {
+    // selection: { breakfast: { enabled: bool, items: [str] }, lunch: ..., dinner: ... }
+    const state = JSON.parse(JSON.stringify(selection || {}));
+    const pop = el("div", { class: "meals-pop" });
+
+    function rerender() {
+      pop.innerHTML = "";
+      pop.appendChild(el("div", { class: "mp-head" }, [
+        el("div", { class: "mp-title" }, "Add meals"),
+        el("div", { class: "mp-sub" }, "Continental menu · per person per day · select what to include")
+      ]));
+      MEALS.forEach(meal => {
+        const cur = state[meal.id] || { enabled: false, items: [] };
+        const enabled = cur.enabled;
+        const itemsBox = el("div", { class: "mp-items" });
+        meal.menu.forEach(item => {
+          const checked = cur.items.includes(item);
+          const cb = el("input", { type: "checkbox" });
+          cb.checked = checked;
+          if (!enabled) cb.disabled = true;
+          cb.addEventListener("change", () => {
+            const next = state[meal.id] || { enabled: true, items: [] };
+            if (cb.checked) next.items.push(item);
+            else next.items = next.items.filter(i => i !== item);
+            state[meal.id] = next;
+            onChange && onChange(state);
+            rerender();
+          });
+          const lbl = el("label", { class: "mp-item" + (enabled ? "" : " disabled") }, [cb, document.createTextNode(" " + item)]);
+          itemsBox.appendChild(lbl);
+        });
+        const toggle = el("input", { type: "checkbox" });
+        toggle.checked = enabled;
+        toggle.addEventListener("change", () => {
+          const next = state[meal.id] || { enabled: false, items: [] };
+          next.enabled = toggle.checked;
+          if (next.enabled && next.items.length === 0) next.items = meal.menu.slice(0, 4);
+          state[meal.id] = next;
+          onChange && onChange(state);
+          rerender();
+        });
+        const section = el("section", { class: "mp-section" + (enabled ? " on" : "") }, [
+          el("header", { class: "mp-row" }, [
+            el("div", { class: "mp-meal" }, [
+              el("span", { class: "mp-emoji" }, meal.emoji),
+              el("div", {}, [el("strong", {}, meal.label), el("div", { class: "mp-serving" }, meal.serving)])
+            ]),
+            el("div", { class: "mp-price" }, [
+              el("strong", {}, fmtMoney(meal.pricePerPerson)),
+              el("span", {}, "/ person / day")
+            ]),
+            toggle
+          ]),
+          itemsBox
+        ]);
+        pop.appendChild(section);
+      });
+      const total = MEALS.reduce((s, m) => s + (state[m.id]?.enabled ? m.pricePerPerson : 0), 0);
+      pop.appendChild(el("div", { class: "mp-foot" }, [
+        el("span", { class: "mp-totline" }, total ? `${fmtMoney(total)} per person per day` : "No meals selected"),
+        el("button", { type: "button", class: "mp-done", onClick: closeAll }, "Done")
+      ]));
+    }
+    function closeAll() {
+      document.removeEventListener("mousedown", outside, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", reposition);
+      pop.remove();
+    }
+    function outside(e) { if (!pop.contains(e.target) && !anchor.contains(e.target)) closeAll(); }
+    function onKey(e) { if (e.key === "Escape") closeAll(); }
+    function reposition() {
+      const r = anchor.getBoundingClientRect();
+      if (window.innerWidth < 720) {
+        pop.classList.add("mobile");
+        pop.style.left = ""; pop.style.top = ""; pop.style.right = "";
+        return;
+      }
+      pop.classList.remove("mobile");
+      let top = r.bottom + window.scrollY + 6;
+      let left = r.left + window.scrollX;
+      const popW = pop.offsetWidth || 480;
+      if (left + popW > window.scrollX + window.innerWidth - 8) left = window.scrollX + window.innerWidth - popW - 8;
+      pop.style.left = Math.max(8, left) + "px";
+      pop.style.top = top + "px";
+      pop.style.width = "min(480px, calc(100vw - 16px))";
+    }
+    rerender();
+    document.body.appendChild(pop);
+    reposition();
+    document.addEventListener("mousedown", outside, true);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", reposition);
+    return { close: closeAll };
+  }
+};
 
 // Adults / children stepper popover (anchored, click-outside to close).
 const GuestsPicker = {
@@ -474,7 +579,10 @@ route("/property/:id", ({ id }) => {
   const checkInBtn = el("button", { type: "button", class: "df-cell" }, "");
   const checkOutBtn = el("button", { type: "button", class: "df-cell" }, "");
   const guestsBtn = el("button", { type: "button", class: "df-cell df-cell-full" }, "");
+  const mealsBtn = el("button", { type: "button", class: "df-cell df-cell-full" }, "");
   const totalsBox = el("div", { class: "totals" });
+
+  let meals = {}; // { breakfast:{enabled:bool, items:[]}, lunch:{...}, dinner:{...} }
 
   function fmtDayLabel(d) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
   function refreshTriggers() {
@@ -483,6 +591,10 @@ route("/property/:id", ({ id }) => {
     const total = adults + children;
     const detail = (children ? `${adults} adult${adults === 1 ? "" : "s"} · ${children} child${children === 1 ? "" : "ren"}` : `${adults} adult${adults === 1 ? "" : "s"}`);
     guestsBtn.innerHTML = `<label>Guests</label><div class="val">${total} guest${total === 1 ? "" : "s"} <span class="muted">· ${detail}</span></div>`;
+    const mealCount = MEALS.filter(m => meals[m.id]?.enabled).length;
+    const mealText = mealCount === 0 ? "None — add for a chef-prepared menu" :
+      MEALS.filter(m => meals[m.id]?.enabled).map(m => `${m.emoji} ${m.label.replace("Continental ", "")}`).join(" · ");
+    mealsBtn.innerHTML = `<label>Meals</label><div class="val">${mealText}</div>`;
   }
 
   function recalcTotals() {
@@ -492,10 +604,18 @@ route("/property/:id", ({ id }) => {
     const service = Math.round(nightly * 0.12);
     const fest = window.festivalForRange(dateIn.getTime(), dateOut.getTime());
     const discount = fest ? Math.round(nightly * FESTIVAL_DISCOUNT) : 0;
-    const total = nightly + cleaning + service - discount;
+    const guestCount = adults + children;
+    const enabledMeals = MEALS.filter(m => meals[m.id]?.enabled);
+    const mealsCost = enabledMeals.reduce((s, m) => s + m.pricePerPerson, 0) * guestCount * nights;
+    const total = nightly + cleaning + service - discount + mealsCost;
+    const mealRows = enabledMeals.map(m => {
+      const sub = m.pricePerPerson * guestCount * nights;
+      return `<div class="row meal"><span>${m.emoji} ${m.label} · ${guestCount}p × ${nights}d</span><span>${fmtMoney(sub)}</span></div>`;
+    }).join("");
     totalsBox.innerHTML = `
       <div class="row"><span>${fmtMoney(l.pricePerNight)} × ${nights} night${nights === 1 ? "" : "s"}</span><span>${fmtMoney(nightly)}</span></div>
       ${fest ? `<div class="row discount"><span>${fest.emoji} ${fest.name} discount (5%)</span><span>−${fmtMoney(discount)}</span></div>` : ""}
+      ${mealRows}
       <div class="row"><span>Cleaning fee</span><span>${fmtMoney(cleaning)}</span></div>
       <div class="row"><span>Service fee</span><span>${fmtMoney(service)}</span></div>
       <div class="total"><span>Total</span><span>${fmtMoney(total)}</span></div>
@@ -506,23 +626,30 @@ route("/property/:id", ({ id }) => {
 
   // Calendar trigger
   let openPicker = null;
-  function openCalendar() {
+  function openCalendar(focus) {
     if (openPicker) { openPicker.close(); openPicker = null; return; }
     openPicker = DatePicker.open({
       anchor: checkInBtn,
       from: dateIn, to: dateOut,
+      focus, // "in" or "out"
       minDate: new Date(),
       festivals: window.FESTIVALS,
       onChange: ({ from, to }) => {
         if (from) dateIn = from;
-        if (to) dateOut = to;
-        if (from && to) { refreshTriggers(); recalcTotals(); }
+        if (to) {
+          dateOut = to;
+        } else if (from) {
+          // First click only set check-in; ensure check-out is at least one day after.
+          if (!dateOut || dateOut <= from) dateOut = new Date(from.getTime() + 86400000);
+        }
+        refreshTriggers();
+        recalcTotals();
       },
       onClose: () => { openPicker = null; refreshTriggers(); recalcTotals(); }
     });
   }
-  checkInBtn.addEventListener("click", openCalendar);
-  checkOutBtn.addEventListener("click", openCalendar);
+  checkInBtn.addEventListener("click", () => openCalendar("in"));
+  checkOutBtn.addEventListener("click", () => openCalendar("out"));
 
   // Guests popover
   let openGuests = null;
@@ -535,6 +662,18 @@ route("/property/:id", ({ id }) => {
     });
   }
   guestsBtn.addEventListener("click", openGuestsPopover);
+
+  // Meals popover
+  let openMeals = null;
+  function openMealsPopover() {
+    if (openMeals) { openMeals.close(); openMeals = null; return; }
+    openMeals = MealsPicker.open({
+      anchor: mealsBtn,
+      selection: meals,
+      onChange: next => { meals = next; refreshTriggers(); recalcTotals(); }
+    });
+  }
+  mealsBtn.addEventListener("click", openMealsPopover);
 
   refreshTriggers();
   setTimeout(recalcTotals, 0);
@@ -560,6 +699,7 @@ route("/property/:id", ({ id }) => {
         adults, children,
         guests: adults + children,
         total: totalsBox._total,
+        meals,
         payment: { brand: payment.brand, last4: payment.last4, holder: payment.holder, txnId: payment.txnId }
       });
     } catch (err) {
@@ -597,7 +737,7 @@ route("/property/:id", ({ id }) => {
       el("div", { class: "booking-card" }, [
         el("div", { class: "price-line", html: `<span class="big">${fmtMoney(l.pricePerNight)}</span><span class="per">night</span>` }),
         el("div", { class: "df-grid" }, [
-          checkInBtn, checkOutBtn, guestsBtn
+          checkInBtn, checkOutBtn, guestsBtn, mealsBtn
         ]),
         reserveBtn,
         totalsBox
@@ -644,6 +784,13 @@ route("/booking/:id", ({ id }) => {
           el("div", { class: "confirm-row" }, [el("span", { class: "k" }, "Status"), el("span", { class: "v" }, el("span", { class: "badge badge-on" }, b.status))])
         ]),
         fest ? el("div", { class: "confirm-fest", html: `${fest.emoji} <strong>${fest.name} discount</strong> — 5% off applied because your stay overlaps the festival window.` }) : null,
+        b.meals && Object.values(b.meals).some(m => m?.enabled) ? el("div", { class: "confirm-meals" }, [
+          el("strong", {}, "Included meals"),
+          el("div", { class: "confirm-meals-list" }, MEALS.filter(m => b.meals[m.id]?.enabled).map(m => el("div", { class: "confirm-meal-row" }, [
+            el("span", { class: "confirm-meal-head" }, `${m.emoji} ${m.label}`),
+            el("span", { class: "confirm-meal-items" }, (b.meals[m.id].items || []).join(" · ") || "Chef's selection")
+          ])))
+        ]) : null,
         b.payment ? el("div", { class: "confirm-pay", html: `💳 Paid with <strong>Mastercard •••• ${b.payment.last4}</strong> · ref ${b.payment.txnId}` }) : null,
         el("div", { class: "confirm-total" }, [
           el("span", {}, "Total paid"),

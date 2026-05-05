@@ -366,6 +366,81 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
   .dp-cell { height: 44px; font-size: 14px; }
 }
 
+/* ---------- meals popover ---------- */
+.meals-pop {
+  position: absolute;
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  padding: 16px;
+  z-index: 105;
+  min-width: 480px; max-width: calc(100vw - 16px);
+  max-height: 80vh; overflow-y: auto;
+  animation: fade-in 0.18s ease-out;
+}
+.meals-pop.mobile {
+  position: fixed; left: 16px; right: 16px; top: 16px; bottom: 16px;
+  min-width: 0; max-height: calc(100vh - 32px);
+}
+.mp-head { padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.mp-title { font-weight: 700; font-size: 16px; }
+.mp-sub { color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+
+.mp-section {
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 12px 14px; margin-bottom: 10px;
+  background: var(--bg);
+}
+.mp-section.on { border-color: var(--rose); background: rgba(255, 56, 92, 0.04); }
+.mp-row {
+  display: flex; align-items: center; gap: 12px;
+}
+.mp-meal { flex: 1; display: flex; gap: 10px; align-items: center; }
+.mp-emoji { font-size: 22px; }
+.mp-meal strong { font-size: 14px; }
+.mp-serving { color: var(--ink-soft); font-size: 11px; }
+.mp-price { text-align: right; }
+.mp-price strong { font-size: 14px; display: block; }
+.mp-price span { color: var(--ink-soft); font-size: 11px; }
+.mp-row > input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--rose); cursor: pointer;
+}
+.mp-items { margin-top: 10px; padding-left: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.mp-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--ink); cursor: pointer; line-height: 1.3;
+}
+.mp-item.disabled { color: var(--ink-soft); cursor: not-allowed; opacity: 0.6; }
+.mp-item input { width: 14px; height: 14px; accent-color: var(--rose); }
+.mp-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 12px; border-top: 1px solid var(--line); margin-top: 4px;
+}
+.mp-totline { font-size: 13px; color: var(--ink-soft); }
+.mp-done {
+  background: var(--ink); color: var(--bg);
+  padding: 8px 18px; border-radius: var(--radius-sm); font-weight: 600;
+}
+.mp-done:hover { background: var(--rose); color: #fff; }
+
+@media (max-width: 720px) {
+  .mp-items { grid-template-columns: 1fr; }
+}
+
+/* meal rows in totals */
+.booking-card .totals .row.meal { color: var(--ink-soft); font-size: 13px; }
+
+/* meals on confirmation page */
+.confirm-meals {
+  margin-top: 14px; padding: 12px 14px;
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.confirm-meals strong { display: block; margin-bottom: 8px; font-size: 13px; }
+.confirm-meals-list { display: flex; flex-direction: column; gap: 6px; }
+.confirm-meal-row { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.confirm-meal-head { font-weight: 600; }
+.confirm-meal-items { color: var(--ink-soft); font-size: 12px; }
+
 /* ---------- guests popover ---------- */
 .guests-pop {
   position: absolute;

@@ -311,6 +311,62 @@ const CATEGORY_MAP = {
   l12: ["heritage", "design", "souk"]
 };
 
+// Continental meal add-ons. Pricing is per person per day. Each meal type
+// has a curated menu — guests pick which items to include with the booking.
+const MEALS = [
+  {
+    id: "breakfast",
+    label: "Continental breakfast",
+    emoji: "🥐",
+    pricePerPerson: 65,
+    serving: "Served 7:00 – 10:30",
+    menu: [
+      "Eggs Benedict with Hollandaise",
+      "Avocado Toast on Sourdough",
+      "Buttery Croissant & Pain au Chocolat",
+      "Belgian Waffles with Berries",
+      "Greek Yogurt Parfait",
+      "Smoked Salmon Bagel",
+      "Buttermilk Pancakes with Maple",
+      "Eggs Florentine"
+    ]
+  },
+  {
+    id: "lunch",
+    label: "Continental lunch",
+    emoji: "🥗",
+    pricePerPerson: 95,
+    serving: "Served 12:30 – 15:00",
+    menu: [
+      "Caesar Salad with Anchovies",
+      "Caprese Sandwich on Ciabatta",
+      "Beef Carpaccio with Rocket",
+      "Wild Mushroom Risotto",
+      "Grilled Salmon Filet",
+      "Chicken Parmigiana",
+      "Roasted Tomato & Basil Soup",
+      "Margherita Pizza"
+    ]
+  },
+  {
+    id: "dinner",
+    label: "Continental dinner",
+    emoji: "🍽️",
+    pricePerPerson: 125,
+    serving: "Served 19:00 – 22:30",
+    menu: [
+      "Filet Mignon with Truffle Jus",
+      "Lobster Thermidor",
+      "Duck à l'Orange",
+      "Beef Wellington",
+      "Veal Osso Buco with Gremolata",
+      "Pan-Seared Halibut",
+      "Vegetable Wellington",
+      "Lamb Rack with Rosemary"
+    ]
+  }
+];
+
 // UAE festival windows. A booking that overlaps any of these gets 5% off the nightly subtotal.
 const FESTIVALS = [
   { id: "eid-fitr",     name: "Eid Al Fitr",      emoji: "🌙", start: "2026-03-19", end: "2026-03-23" },
@@ -344,4 +400,5 @@ if (typeof window !== "undefined") {
   window.FESTIVAL_DISCOUNT = FESTIVAL_DISCOUNT;
   window.festivalForRange = festivalForRange;
   window.nextFestival = nextFestival;
+  window.MEALS = MEALS;
 }

@@ -138,6 +138,7 @@ const Supa = (function () {
       guests: r.guests, adults: r.adults, children: r.children,
       total: Number(r.total),
       status: r.status,
+      meals: r.meals || null,
       payment: r.payment,
       cancellationFee: r.cancellation_fee != null ? Number(r.cancellation_fee) : undefined,
       refunded: r.refunded != null ? Number(r.refunded) : undefined,
@@ -219,7 +220,9 @@ const Supa = (function () {
       check_in: new Date(b.checkIn).toISOString(),
       check_out: new Date(b.checkOut).toISOString(),
       guests: b.guests, adults: b.adults || b.guests, children: b.children || 0,
-      total: b.total, status: "confirmed", payment: b.payment || null
+      total: b.total, status: "confirmed",
+      meals: b.meals || null,
+      payment: b.payment || null
     };
     const { data, error } = await client.from("bookings").insert(row).select().single();
     if (error) throw error;
