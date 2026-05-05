@@ -326,7 +326,7 @@ route("/", () => {
     el("div", { class: "hero-content" }, [
       el("h1", { class: "hero-title" }, "Stay in the Emirates."),
       el("p", { class: "hero-sub" }, "From Burj Khalifa sky suites to desert tents under the stars — find your next stay across the UAE."),
-      el("div", { class: "hero-chip", html: `🎉 5% off festival stays · next: ${fest.emoji} ${fest.name}` })
+      el("div", { class: "hero-chip", html: `<span class="spark">✨</span> <strong>5% OFF</strong> festival stays · next: ${fest.emoji} ${fest.name}` })
     ])
   ]);
 

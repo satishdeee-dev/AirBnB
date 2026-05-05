@@ -219,16 +219,57 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
   opacity: 0.95;
 }
 .hero-chip {
-  display: inline-block;
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--ink);
-  padding: 9px 18px;
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 12px 22px;
   border-radius: 999px;
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.01em;
   text-shadow: none;
-  box-shadow: var(--shadow-md);
-  animation: sparkle 2.6s ease-in-out infinite;
+  color: var(--ink);
+  background: linear-gradient(135deg, #fff 0%, #fff5d4 100%);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+  animation: hero-flash 1.4s ease-in-out infinite;
+}
+.hero-chip::before {
+  content: "";
+  position: absolute; inset: -4px;
+  border-radius: 999px;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 209, 102, 0.6) 60deg, transparent 120deg, transparent 240deg, rgba(255, 56, 92, 0.6) 300deg, transparent 360deg);
+  filter: blur(6px);
+  z-index: -1;
+  animation: chip-spin 4s linear infinite;
+}
+.hero-chip strong { color: var(--rose); font-weight: 800; }
+.hero-chip .spark {
+  display: inline-block;
+  animation: spark-spin 1.8s ease-in-out infinite;
+}
+
+@keyframes hero-flash {
+  0%, 100% {
+    background: linear-gradient(135deg, #fff 0%, #fff5d4 100%);
+    color: var(--ink);
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 209, 102, 0), 0 6px 16px rgba(0,0,0,0.18);
+  }
+  50% {
+    background: linear-gradient(135deg, #ffd166 0%, var(--rose) 100%);
+    color: #fff;
+    transform: scale(1.045);
+    box-shadow: 0 0 28px 4px rgba(255, 209, 102, 0.65), 0 8px 22px rgba(255, 56, 92, 0.45);
+  }
+}
+.hero-chip:hover { animation-play-state: paused; }
+.hero-chip:hover strong { color: inherit; }
+
+@keyframes chip-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes spark-spin {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(20deg) scale(1.25); }
 }
 
 @keyframes float-sun {
@@ -261,7 +302,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-sun, .hero-cloud, .hero-palm, .hero-chip, .hero-content, .hero-sky::after { animation: none; }
+  .hero-sun, .hero-cloud, .hero-palm, .hero-chip, .hero-content, .hero-sky::after,
+  .hero-chip::before, .hero-chip .spark,
+  .booking-card .totals .row.discount, .confirm-fest { animation: none; }
 }
 
 /* ---------- categories ---------- */
@@ -482,8 +525,23 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 }
 .booking-card .totals .row.discount {
   color: var(--good);
-  font-weight: 600;
-  animation: fade-in 0.4s ease-out both;
+  font-weight: 700;
+  padding: 6px 10px;
+  margin: 4px -10px;
+  border-radius: 8px;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.15);
+  animation: fade-in 0.4s ease-out both, discount-flash 1.6s ease-in-out 0.4s infinite;
+}
+@keyframes discount-flash {
+  0%, 100% {
+    background: rgba(74, 222, 128, 0.08);
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+  50% {
+    background: rgba(74, 222, 128, 0.22);
+    box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.18), 0 0 18px rgba(74, 222, 128, 0.4);
+  }
 }
 
 /* ---------- admin ---------- */
@@ -822,11 +880,22 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 .confirm-row .k { color: var(--ink-soft); }
 .confirm-row .v { font-weight: 600; }
 .confirm-fest {
-  margin-top: 14px; padding: 10px 12px;
-  background: rgba(255, 209, 102, 0.1);
-  border: 1px solid rgba(255, 209, 102, 0.3);
+  margin-top: 14px; padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.18), rgba(255, 56, 92, 0.12));
+  border: 1px solid rgba(255, 209, 102, 0.35);
   border-radius: var(--radius-sm);
-  color: #ffd166; font-size: 13px;
+  color: #ffd166; font-size: 13px; font-weight: 500;
+  animation: confirm-fest-flash 1.8s ease-in-out infinite;
+}
+@keyframes confirm-fest-flash {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 209, 102, 0);
+    border-color: rgba(255, 209, 102, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 24px 2px rgba(255, 209, 102, 0.45);
+    border-color: rgba(255, 209, 102, 0.85);
+  }
 }
 .confirm-pay {
   margin-top: 14px; padding: 10px 12px;
