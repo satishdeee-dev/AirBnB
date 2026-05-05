@@ -9,7 +9,14 @@
 //   #/admin/bookings
 //   #/admin/users
 
-Store.init();
+// Boot order: init Supabase client + auth state, then hydrate caches, then render.
+(async function boot() {
+  Store.init();
+  await Supa.init();
+  Supa.onChange(() => render());
+  await Supa.bootstrap();
+  render();
+})();
 
 const $ = sel => document.querySelector(sel);
 const el = (tag, attrs = {}, children = []) => {
@@ -256,14 +263,17 @@ route("/login", () => {
   const passIn = el("input", { type: "password", id: "password", placeholder: "Your password", required: true });
 
   const form = el("form", {
-    onSubmit: e => {
+    onSubmit: async e => {
       e.preventDefault();
+      const submitBtn = form.querySelector("button[type=submit]");
+      submitBtn.disabled = true; submitBtn.textContent = "Signing in…";
       try {
-        const sess = Store.session.login(emailIn.value.trim(), passIn.value);
-        toast(`Welcome back, ${sess.name}`);
-        navigate(sess.role === "admin" ? "/admin" : "/");
+        await Supa.auth.signIn({ email: emailIn.value.trim(), password: passIn.value });
+        // onAuthStateChange will trigger Supa.bootstrap() + render()
+        toast("Welcome back");
       } catch (err) {
-        errBox.textContent = err.message; errBox.style.display = "block";
+        errBox.textContent = err.message || "Sign-in failed"; errBox.style.display = "block";
+        submitBtn.disabled = false; submitBtn.textContent = "Log in";
       }
     }
   }, [
@@ -278,7 +288,7 @@ route("/login", () => {
     ]),
     el("button", { class: "btn btn-primary btn-block btn-lg", type: "submit" }, "Log in"),
     el("div", { class: "switch", html: 'New to Stayly? <a onclick="location.hash=\'#/signup\'">Create an account</a>' }),
-    el("div", { class: "demo-creds", html: '<strong>Try the demo</strong><br>Admin — admin@stayly.com / admin123<br>Guest — guest@stayly.com / guest123' })
+    el("div", { class: "demo-creds", html: '<strong>Powered by Supabase</strong><br>Sign up to create an account — choose Guest or Admin role on the signup page. Email confirmation may be required if enabled in your project.' })
   ]);
 
   const card = el("div", { class: "auth-card" }, [
@@ -304,15 +314,27 @@ route("/signup", () => {
   adminBtn.addEventListener("click", () => { role = "admin"; adminBtn.classList.add("active"); userBtn.classList.remove("active"); });
 
   const form = el("form", {
-    onSubmit: e => {
+    onSubmit: async e => {
       e.preventDefault();
+      const submitBtn = form.querySelector("button[type=submit]");
+      submitBtn.disabled = true; submitBtn.textContent = "Creating account…";
       try {
-        Store.users.create({ name: nameIn.value.trim(), email: emailIn.value.trim(), password: passIn.value, role });
-        const sess = Store.session.login(emailIn.value.trim(), passIn.value);
-        toast(`Account created — welcome, ${sess.name}`);
-        navigate(sess.role === "admin" ? "/admin" : "/");
+        await Supa.auth.signUp({
+          name: nameIn.value.trim(),
+          email: emailIn.value.trim(),
+          password: passIn.value,
+          role
+        });
+        toast("Account created — check your email if confirmation is enabled");
+        try {
+          await Supa.auth.signIn({ email: emailIn.value.trim(), password: passIn.value });
+        } catch {
+          // If email confirmation is required, signIn will fail until confirmed.
+          navigate("/login");
+        }
       } catch (err) {
-        errBox.textContent = err.message; errBox.style.display = "block";
+        errBox.textContent = err.message || "Signup failed"; errBox.style.display = "block";
+        submitBtn.disabled = false; submitBtn.textContent = "Create account";
       }
     }
   }, [
@@ -528,16 +550,22 @@ route("/property/:id", ({ id }) => {
       toast("Payment cancelled");
       return;
     }
-    const booking = Store.bookings.create({
-      userId: session.userId,
-      listingId: l.id,
-      checkIn: dateIn.getTime(),
-      checkOut: dateOut.getTime(),
-      adults, children,
-      guests: adults + children,
-      total: totalsBox._total,
-      payment: { brand: payment.brand, last4: payment.last4, holder: payment.holder, txnId: payment.txnId }
-    });
+    let booking;
+    try {
+      booking = await Store.bookings.create({
+        userId: session.userId,
+        listingId: l.id,
+        checkIn: dateIn.getTime(),
+        checkOut: dateOut.getTime(),
+        adults, children,
+        guests: adults + children,
+        total: totalsBox._total,
+        payment: { brand: payment.brand, last4: payment.last4, holder: payment.holder, txnId: payment.txnId }
+      });
+    } catch (err) {
+      toast("Booking failed: " + (err.message || "unknown error"));
+      return;
+    }
     navigate("/booking/" + booking.id);
   });
 
@@ -656,9 +684,8 @@ route("/trips", () => {
         : `A 5% cancellation fee applies after the 48-hour grace window.\n\n• Original total: ${fmtMoney(b.total)}\n• Cancellation fee (5%): −${fmtMoney(q.fee)}\n• Refund to your card: ${fmtMoney(q.refund)}`;
       const ok = await confirmModal({ title: "Cancel this trip?", body, confirmText: q.freeWindow ? "Cancel trip" : `Cancel (fee ${fmtMoney(q.fee)})`, danger: true });
       if (!ok) return;
-      Store.bookings.cancel(b.id);
+      try { await Store.bookings.cancel(b.id); } catch (err) { toast("Cancel failed: " + err.message); return; }
       toast(q.freeWindow ? "Trip cancelled — full refund issued" : `Trip cancelled — ${fmtMoney(q.refund)} refunded`);
-      render();
     });
     const totalCell = b.status === "cancelled"
       ? el("td", { class: "stack" }, [
@@ -763,11 +790,7 @@ route("/admin", () => {
       ])
     ]) : el("div", { class: "empty", style: "padding:32px" }, [el("p", {}, "No bookings yet — when guests reserve, they'll show here.")]),
     el("div", { style: "margin-top:32px;display:flex;gap:8px" }, [
-      el("a", { class: "btn btn-primary", href: "#/admin/listings/new" }, "+ New listing"),
-      el("button", { class: "btn btn-ghost", onClick: async () => {
-        const ok = await confirmModal({ title: "Reset all data?", body: "This wipes users, listings, and bookings, then re-seeds the demo data.", confirmText: "Reset", danger: true });
-        if (ok) { Store.resetSeed(); toast("Demo data reset"); navigate("/login"); }
-      } }, "Reset demo data")
+      el("a", { class: "btn btn-primary", href: "#/admin/listings/new" }, "+ New listing")
     ])
   ];
   shell(adminShell("dash", content));
@@ -800,11 +823,16 @@ route("/admin/listings", () => {
     }
     filt.forEach(l => {
       const editBtn = el("button", { onClick: () => navigate("/admin/listings/" + l.id + "/edit") }, "Edit");
-      const toggleBtn = el("button", { onClick: () => { Store.listings.update(l.id, { active: !l.active }); toast(l.active ? "Listing hidden" : "Listing published"); render(); } }, l.active === false ? "Publish" : "Hide");
+      const toggleBtn = el("button", { onClick: async () => {
+        try { await Store.listings.update(l.id, { active: !l.active }); }
+        catch (err) { toast("Update failed: " + err.message); return; }
+        toast(l.active ? "Listing hidden" : "Listing published");
+      } }, l.active === false ? "Publish" : "Hide");
       const delBtn = el("button", { class: "del", onClick: async () => {
         const ok = await confirmModal({ title: "Delete this listing?", body: l.title + " will be permanently removed.", confirmText: "Delete", danger: true });
         if (!ok) return;
-        Store.listings.remove(l.id); toast("Listing deleted"); render();
+        try { await Store.listings.remove(l.id); } catch (err) { toast("Delete failed: " + err.message); return; }
+        toast("Listing deleted");
       } }, "Delete");
       tbody.appendChild(el("tr", {}, [
         el("td", {}, el("img", { class: "row-img", src: l.images[0] })),
@@ -861,7 +889,7 @@ function listingForm(existing) {
   superIn.value = f.superhost ? "yes" : "no";
 
   const form = el("form", {
-    onSubmit: e => {
+    onSubmit: async e => {
       e.preventDefault();
       const images = imagesIn.value.split("\n").map(s => s.trim()).filter(Boolean);
       if (images.length === 0) { toast("Add at least one image URL"); return; }
@@ -880,12 +908,17 @@ function listingForm(existing) {
         images,
         host: { name: hostIn.value.trim(), years: f.host?.years || 1, avatar: "https://i.pravatar.cc/120?u=" + encodeURIComponent(hostIn.value.trim()) }
       };
-      if (existing) {
-        Store.listings.update(existing.id, payload);
-        toast("Listing updated");
-      } else {
-        Store.listings.create({ ...payload, ownerId: Store.session.current().userId });
-        toast("Listing created");
+      try {
+        if (existing) {
+          await Store.listings.update(existing.id, payload);
+          toast("Listing updated");
+        } else {
+          await Store.listings.create({ ...payload, ownerId: Store.session.current().userId });
+          toast("Listing created");
+        }
+      } catch (err) {
+        toast("Save failed: " + err.message);
+        return;
       }
       navigate("/admin/listings");
     }
@@ -926,11 +959,15 @@ route("/admin/bookings", () => {
   const rows = all.map(b => {
     const l = Store.listings.byId(b.listingId);
     const u = Store.users.all().find(x => x.id === b.userId);
-    const cancelBtn = el("button", { onClick: () => { Store.bookings.cancel(b.id); toast("Booking cancelled"); render(); } }, "Cancel");
+    const cancelBtn = el("button", { onClick: async () => {
+      try { await Store.bookings.cancel(b.id); } catch (err) { toast("Cancel failed: " + err.message); return; }
+      toast("Booking cancelled");
+    } }, "Cancel");
     const delBtn = el("button", { class: "del", onClick: async () => {
       const ok = await confirmModal({ title: "Delete booking?", body: "This permanently removes the record.", confirmText: "Delete", danger: true });
       if (!ok) return;
-      Store.bookings.remove(b.id); toast("Booking deleted"); render();
+      try { await Store.bookings.remove(b.id); } catch (err) { toast("Delete failed: " + err.message); return; }
+      toast("Booking deleted");
     } }, "Delete");
     return el("tr", {}, [
       el("td", {}, l ? l.title : "—"),
@@ -1064,12 +1101,19 @@ route("/admin/tickets", () => {
 
   const rows = all.map(t => {
     const isOpen = t.status !== "resolved";
-    const resolveBtn = el("button", { onClick: () => { Store.tickets.update(t.id, { status: "resolved", resolvedAt: Date.now() }); toast("Marked resolved"); render(); } }, "Resolve");
-    const reopenBtn = el("button", { onClick: () => { Store.tickets.update(t.id, { status: "open", resolvedAt: null }); toast("Reopened"); render(); } }, "Reopen");
+    const resolveBtn = el("button", { onClick: async () => {
+      try { await Store.tickets.update(t.id, { status: "resolved" }); } catch (err) { toast("Update failed: " + err.message); return; }
+      toast("Marked resolved");
+    } }, "Resolve");
+    const reopenBtn = el("button", { onClick: async () => {
+      try { await Store.tickets.update(t.id, { status: "open" }); } catch (err) { toast("Update failed: " + err.message); return; }
+      toast("Reopened");
+    } }, "Reopen");
     const delBtn = el("button", { class: "del", onClick: async () => {
       const ok = await confirmModal({ title: "Delete this ticket?", body: "The original message will be permanently removed.", confirmText: "Delete", danger: true });
       if (!ok) return;
-      Store.tickets.remove(t.id); toast("Ticket deleted"); render();
+      try { await Store.tickets.remove(t.id); } catch (err) { toast("Delete failed: " + err.message); return; }
+      toast("Ticket deleted");
     } }, "Delete");
     return el("tr", {}, [
       el("td", {}, fmtDate(t.createdAt)),
@@ -1111,7 +1155,8 @@ route("/admin/users", () => {
     const delBtn = el("button", { class: "del", onClick: async () => {
       const ok = await confirmModal({ title: "Remove user?", body: "Bookings tied to this user will become orphaned.", confirmText: "Remove", danger: true });
       if (!ok) return;
-      Store.users.remove(u.id); toast("User removed"); render();
+      try { await Store.users.remove(u.id); } catch (err) { toast("Remove failed: " + err.message); return; }
+      toast("User removed");
     } }, "Delete");
     return el("tr", {}, [
       el("td", {}, u.name + (isMe ? " (you)" : "")),
@@ -1136,5 +1181,5 @@ route("/admin/users", () => {
 });
 
 // ---------------- start ----------------
-
-render();
+// First render is kicked off by the boot() IIFE at the top of this file
+// once Supa is initialised and the cache is hydrated.
