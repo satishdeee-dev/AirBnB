@@ -8,8 +8,8 @@
 // • Mutations are async — they hit Supabase, then refresh the relevant cache slice
 //   and call Supa.onChange() so the SPA can re-render.
 
-const SUPABASE_URL = "https://agmltshckgtdohrpgvrx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbWx0c2hja2d0ZG9ocnBndnJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODI2NTYsImV4cCI6MjA5MzU1ODY1Nn0.1R_21H3eEX127qOmXk-4TbseVLpsKRmoHZqHC7_CW7E";
+const SUPABASE_URL = "https://peyakimjlmkcjwixtzfi.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleWFraW1qbG1rY2p3aXh0emZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODk1MTgsImV4cCI6MjA5MzU2NTUxOH0.Rj4Vm6HlEUkaoQrXnDKIZlvmeCK0BSMfT5aa_jvBnZo";
 
 const Supa = (function () {
   let client = null;
