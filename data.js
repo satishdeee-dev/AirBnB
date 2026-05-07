@@ -308,7 +308,19 @@ const CATEGORY_MAP = {
   l9: ["marina", "skyline", "design"],
   l10: ["beachfront", "resort"],
   l11: ["beachfront", "luxe", "pools", "resort"],
-  l12: ["heritage", "design", "souk"]
+  l12: ["heritage", "design", "souk"],
+  l13: ["resort", "luxe", "pools", "beachfront"],
+  l14: ["resort", "luxe", "beachfront", "skyline"],
+  l15: ["resort", "beachfront", "luxe", "design", "marina"],
+  l16: ["resort", "pools", "beachfront", "skyline"],
+  l17: ["desert", "resort", "luxe", "pools"],
+  l18: ["desert", "resort", "luxe", "pools"],
+  l19: ["resort", "beachfront", "luxe", "pools"],
+  l20: ["resort", "beachfront", "pools"],
+  l21: ["desert", "resort", "luxe", "pools"],
+  l22: ["resort", "marina", "pools", "beachfront"],
+  l23: ["resort", "beachfront", "pools"],
+  l24: ["resort", "marina", "design"]
 };
 
 // Continental meal add-ons. Pricing is per person per day. Each meal type
