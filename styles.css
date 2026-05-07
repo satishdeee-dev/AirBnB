@@ -737,6 +737,148 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 .category.active { color: var(--ink); border-color: var(--ink); }
 .category .ico { font-size: 22px; }
 
+/* ---------- view bar (grid/map toggle) ---------- */
+.view-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap; gap: 12px;
+}
+.result-count { color: var(--ink-soft); font-size: 14px; }
+.view-toggle {
+  display: inline-flex;
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px;
+}
+.vt-btn {
+  padding: 8px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--ink-soft);
+  display: flex; align-items: center; gap: 4px;
+}
+.vt-btn:hover { color: var(--ink); }
+.vt-btn.active {
+  background: var(--rose); color: #fff;
+  box-shadow: 0 2px 8px rgba(255, 56, 92, 0.35);
+}
+
+/* ---------- map view ---------- */
+.map-view {
+  position: relative;
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: fade-in 0.4s ease-out;
+}
+.map-svg {
+  display: block; width: 100%; height: auto; max-height: 70vh;
+}
+.map-pin circle:nth-child(2) {
+  transition: r 0.18s, filter 0.18s;
+}
+.map-pin:hover circle:nth-child(2) {
+  r: 10;
+  filter: drop-shadow(0 0 8px rgba(255, 56, 92, 0.7));
+}
+.map-pin:hover circle:nth-child(1) {
+  r: 22;
+  fill: rgba(255, 56, 92, 0.3);
+}
+.map-popup {
+  position: absolute;
+  width: 240px;
+  background: var(--bg-card); border: 1px solid var(--rose);
+  border-radius: var(--radius-md); overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer; z-index: 10;
+  transition: transform 0.15s;
+}
+.map-popup:hover { transform: translateY(-2px); }
+.map-popup img { width: 100%; height: 110px; object-fit: cover; }
+.map-popup-body { padding: 10px 12px; }
+.map-popup-title { font-weight: 700; font-size: 13px; line-height: 1.3; }
+.map-popup-loc { color: var(--ink-soft); font-size: 11px; margin-top: 2px; }
+.map-popup-meta { font-size: 12px; margin-top: 6px; }
+.map-popup-meta strong { color: var(--rose); }
+
+/* ---------- compare floating bar ---------- */
+.compare-bar {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  padding: 8px 8px 8px 20px;
+  display: flex; align-items: center; gap: 16px;
+  z-index: 80;
+  animation: cmp-slide-up 0.25s ease-out;
+}
+@keyframes cmp-slide-up {
+  from { transform: translate(-50%, 80px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+.compare-bar-info strong { color: var(--rose); }
+.compare-bar-info span { color: var(--ink-soft); font-size: 13px; }
+.compare-bar-actions { display: flex; gap: 8px; }
+.compare-bar-actions .btn { padding: 8px 14px; font-size: 13px; }
+
+/* ---------- compare page ---------- */
+.compare-page { max-width: 1180px; }
+.cmp-grid {
+  display: grid; gap: 1px;
+  background: var(--line); border: 1px solid var(--line);
+  border-radius: var(--radius-md); overflow: hidden;
+  margin-bottom: 24px;
+}
+.cmp-row { display: contents; }
+.cmp-label, .cmp-cell {
+  padding: 12px 16px; background: var(--bg-card);
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px;
+}
+.cmp-label { font-weight: 600; color: var(--ink-soft); font-size: 13px; }
+.cmp-cell { color: var(--ink); }
+.cmp-cell.winner { background: rgba(74, 222, 128, 0.08); }
+.cmp-cell.yes { color: var(--good); font-weight: 700; }
+.cmp-cell.no { color: var(--ink-soft); }
+.cmp-best {
+  background: var(--good); color: #0a3815;
+  padding: 2px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+}
+.cmp-row.cmp-head .cmp-cell { padding: 0; }
+.cmp-card-cell {
+  flex-direction: column; align-items: stretch !important;
+  padding: 0 !important; gap: 0 !important; position: relative;
+}
+.cmp-card-cell img { width: 100%; height: 140px; object-fit: cover; }
+.cmp-title {
+  display: block; padding: 12px 14px 4px; font-weight: 700;
+  color: var(--ink); text-decoration: none;
+}
+.cmp-title:hover { color: var(--rose); }
+.cmp-loc { padding: 0 14px 12px; color: var(--ink-soft); font-size: 12px; }
+.cmp-remove {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+}
+.cmp-remove:hover { background: var(--bad); }
+.cmp-section-head {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ink-soft); margin: 24px 0 8px;
+}
+
+/* ---------- favorites link in header ---------- */
+.fav-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--rose); font-weight: 700;
+}
+.fav-count {
+  background: var(--rose); color: #fff;
+  font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 999px;
+  min-width: 18px; text-align: center;
+}
+
 /* ---------- main + grid ---------- */
 .main { max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }
 .listings-grid {
@@ -768,9 +910,28 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 }
 .listing-card .heart {
   position: absolute; top: 12px; right: 12px;
-  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0); color: #fff; font-size: 22px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.35); backdrop-filter: blur(6px);
+  border-radius: 50%;
+  color: #fff; font-size: 18px; cursor: pointer;
+  transition: transform 0.12s, background 0.12s;
 }
+.listing-card .heart:hover { background: rgba(0,0,0,0.5); transform: scale(1.1); }
+.listing-card .heart.on {
+  background: var(--rose); color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 56, 92, 0.45);
+}
+.listing-card .card-cmp {
+  position: absolute; bottom: 12px; left: 12px;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+  color: #fff; font-size: 11px; font-weight: 600;
+  padding: 5px 10px; border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.listing-card .card-cmp:hover { background: rgba(0,0,0,0.75); }
+.listing-card .card-cmp.on { background: var(--rose); }
 .listing-card .meta {
   display: flex; justify-content: space-between; align-items: baseline;
   margin-top: 12px; font-weight: 600;

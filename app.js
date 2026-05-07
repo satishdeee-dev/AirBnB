@@ -215,6 +215,77 @@ const GuestsPicker = {
   }
 };
 
+// ---------------- favorites + compare selection ----------------
+const Favs = {
+  KEY: "stayly.favs.v1",
+  read() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch { return []; } },
+  has(id) { return this.read().includes(id); },
+  toggle(id) {
+    const f = this.read();
+    const next = f.includes(id) ? f.filter(x => x !== id) : [...f, id];
+    localStorage.setItem(this.KEY, JSON.stringify(next));
+    return next;
+  }
+};
+
+const CompareSel = {
+  KEY: "stayly.compare.v1",
+  MAX: 3,
+  read() { try { return JSON.parse(sessionStorage.getItem(this.KEY)) || []; } catch { return []; } },
+  has(id) { return this.read().includes(id); },
+  toggle(id) {
+    const f = this.read();
+    let next;
+    if (f.includes(id)) next = f.filter(x => x !== id);
+    else if (f.length >= this.MAX) next = [...f.slice(1), id];
+    else next = [...f, id];
+    sessionStorage.setItem(this.KEY, JSON.stringify(next));
+    return next;
+  },
+  clear() { sessionStorage.removeItem(this.KEY); }
+};
+
+// Approximate (x, y) coordinates within a 1000x600 SVG viewBox for the UAE map view.
+const UAE_COORDS = {
+  "Downtown Dubai": { x: 600, y: 280 },
+  "Palm Jumeirah, Dubai": { x: 580, y: 268 },
+  "Palm Jumeirah Crescent, Dubai": { x: 580, y: 263 },
+  "Al Fahidi Historical District, Dubai": { x: 605, y: 290 },
+  "Hatta, Dubai": { x: 700, y: 365 },
+  "Al Marmoom Reserve": { x: 615, y: 320 },
+  "The World, Dubai": { x: 595, y: 252 },
+  "Dubai Creek Golf & Yacht Club": { x: 615, y: 295 },
+  "Dubai Marina": { x: 570, y: 270 },
+  "Jumeirah Beach, Dubai": { x: 590, y: 275 },
+  "Jumeira Bay Island, Dubai": { x: 588, y: 273 },
+  "Jumeirah Beach Residence, Dubai": { x: 565, y: 270 },
+  "Corniche, Abu Dhabi": { x: 380, y: 380 },
+  "Saadiyat Island, Abu Dhabi": { x: 400, y: 365 },
+  "Yas Island, Abu Dhabi": { x: 420, y: 350 },
+  "Liwa, Empty Quarter": { x: 320, y: 480 },
+  "Jebel Jais, Ras Al Khaimah": { x: 770, y: 110 },
+  "Al Hamra Village, Ras Al Khaimah": { x: 740, y: 145 },
+  "Al Marjan Island, Ras Al Khaimah": { x: 745, y: 135 },
+  "Wadi Khadeja, Ras Al Khaimah": { x: 760, y: 125 },
+  "Dubai Desert Conservation Reserve": { x: 660, y: 320 },
+  "Al Aqah, Fujairah": { x: 880, y: 230 },
+  "Heart of Sharjah, Sharjah": { x: 640, y: 270 }
+};
+function coordsFor(loc) {
+  if (UAE_COORDS[loc]) return UAE_COORDS[loc];
+  // Fuzzy match: try to match the city/emirate keyword
+  const k = (loc || "").toLowerCase();
+  if (k.includes("dubai")) return { x: 600 + Math.random()*30, y: 280 + Math.random()*20 };
+  if (k.includes("abu dhabi")) return { x: 400 + Math.random()*30, y: 370 + Math.random()*20 };
+  if (k.includes("ras al khaimah") || k.includes("rak")) return { x: 750, y: 130 };
+  if (k.includes("fujairah")) return { x: 880, y: 230 };
+  if (k.includes("sharjah")) return { x: 640, y: 270 };
+  if (k.includes("ajman")) return { x: 660, y: 250 };
+  return { x: 500, y: 300 };
+}
+
+// ---------------- multi-step booking draft ----------------
+
 // Multi-step booking draft. Persisted in sessionStorage so a refresh
 // during the meals/payment steps doesn't wipe the user's selections.
 const Draft = {
@@ -397,6 +468,14 @@ function header({ active = "" } = {}) {
           html: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zm-.7 4.3a6 6 0 1 1 1.4-1.4l4 4a1 1 0 1 1-1.4 1.4l-4-4z"/></svg>Search' })
       ]),
       el("div", { class: "header-right" }, [
+        session.role === "user" ? (function(){
+          const favCount = Favs.read().length;
+          const favLink = el("a", { class: "host-link fav-link", href: "#/favorites", title: "Favorites" }, [
+            document.createTextNode("♥ "),
+            favCount ? el("span", { class: "fav-count" }, String(favCount)) : null
+          ]);
+          return favLink;
+        })() : null,
         session.role === "admin"
           ? el("a", { class: "host-link", href: "#/admin" }, "Admin")
           : el("a", { class: "host-link", href: "#/trips" }, "My trips"),
@@ -424,7 +503,10 @@ function shell(children, opts = {}) {
   document.body.innerHTML = "";
   document.body.appendChild(header(opts));
   const main = el("div", { id: "view" });
-  (Array.isArray(children) ? children : [children]).forEach(c => main.appendChild(c));
+  (Array.isArray(children) ? children : [children]).forEach(c => {
+    if (c == null || c === false) return;
+    main.appendChild(c);
+  });
   document.body.appendChild(main);
   document.body.appendChild(footer());
 }
@@ -533,6 +615,8 @@ route("/signup", () => {
 
 // ---------------- user: home / browse ----------------
 
+let homeView = "grid"; // "grid" | "map"
+
 route("/", () => {
   let activeCat = window.__activeCategory || "all";
   let q = window.__searchQuery || "";
@@ -599,21 +683,146 @@ route("/", () => {
     return matchCat && matchQ;
   });
 
-  const grid = el("div", { class: "listings-grid" });
-  if (filtered.length === 0) {
-    grid.replaceWith(el("div", { class: "empty" }, [
-      el("h3", {}, "No stays match those filters"),
-      el("p", {}, "Try clearing the search or picking a different category.")
-    ]));
-  }
-  filtered.forEach(l => grid.appendChild(listingCard(l)));
+  // View toggle: grid vs map
+  const viewToggle = el("div", { class: "view-toggle" }, [
+    el("button", {
+      class: "vt-btn" + (homeView === "grid" ? " active" : ""),
+      onClick: () => { homeView = "grid"; render(); }
+    }, [el("span", {}, "▦ "), document.createTextNode("Grid")]),
+    el("button", {
+      class: "vt-btn" + (homeView === "map" ? " active" : ""),
+      onClick: () => { homeView = "map"; render(); }
+    }, [el("span", {}, "📍 "), document.createTextNode("Map")])
+  ]);
 
-  shell([promoStrip, heroEl, catBar, el("main", { class: "main" }, [grid])]);
+  let mainContent;
+  if (homeView === "map") {
+    mainContent = mapView(filtered);
+  } else {
+    const grid = el("div", { class: "listings-grid" });
+    if (filtered.length === 0) {
+      mainContent = el("div", { class: "empty" }, [
+        el("h3", {}, "No stays match those filters"),
+        el("p", {}, "Try clearing the search or picking a different category.")
+      ]);
+    } else {
+      filtered.forEach(l => grid.appendChild(listingCard(l)));
+      mainContent = grid;
+    }
+  }
+
+  shell([
+    promoStrip, heroEl, catBar,
+    el("main", { class: "main" }, [
+      el("div", { class: "view-bar" }, [
+        el("div", { class: "result-count" }, filtered.length + " stay" + (filtered.length === 1 ? "" : "s")),
+        viewToggle
+      ]),
+      mainContent
+    ]),
+    compareBar()
+  ]);
   const sb = document.getElementById("globalSearch");
   if (sb && q) sb.value = q;
 });
 
+// Map view of listings — stylized UAE outline with hover-able pins.
+function mapView(listings) {
+  const wrap = el("div", { class: "map-view" });
+
+  const popup = el("div", { class: "map-popup", style: "display:none" });
+  function showPopup(l, x, y) {
+    popup.innerHTML = `
+      <img src="${l.images[0]}" alt="" />
+      <div class="map-popup-body">
+        <div class="map-popup-title">${escapeHtml(l.title)}</div>
+        <div class="map-popup-loc">${escapeHtml(l.location)}</div>
+        <div class="map-popup-meta"><strong>${fmtMoney(l.pricePerNight)}</strong> · ★ ${l.rating || "New"}</div>
+      </div>
+    `;
+    popup.onclick = () => navigate("/property/" + l.id);
+    const r = wrap.getBoundingClientRect();
+    const popupW = 240;
+    const px = Math.min(Math.max(8, x - popupW / 2), r.width - popupW - 8);
+    popup.style.left = px + "px";
+    popup.style.top = (y + 16) + "px";
+    popup.style.display = "block";
+  }
+  function hidePopup() { popup.style.display = "none"; }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", "0 0 1000 600");
+  svg.setAttribute("class", "map-svg");
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="seaGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0a1830"/>
+        <stop offset="100%" stop-color="#0e0e10"/>
+      </linearGradient>
+      <linearGradient id="landGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#3a3a40"/>
+        <stop offset="100%" stop-color="#2a2a2e"/>
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <rect width="1000" height="600" fill="url(#seaGrad)"/>
+    <text x="80" y="40" fill="#9ca3af" font-size="14" font-family="sans-serif" font-weight="700" letter-spacing="0.1em">ARABIAN GULF</text>
+    <text x="800" y="450" fill="#9ca3af" font-size="14" font-family="sans-serif" font-weight="700" letter-spacing="0.1em">GULF OF OMAN</text>
+    <path d="M 240 380 Q 240 470 320 510 Q 420 530 530 510 Q 680 480 780 410 L 880 270 L 920 180 Q 920 100 870 100 L 770 100 Q 700 130 670 170 Q 600 220 510 245 Q 380 270 290 320 Q 240 350 240 380 Z"
+          fill="url(#landGrad)" stroke="rgba(255, 56, 92, 0.4)" stroke-width="2"/>
+    <text x="380" y="380" fill="#a0a0a8" font-size="11" font-family="sans-serif">ABU DHABI</text>
+    <text x="600" y="245" fill="#a0a0a8" font-size="11" font-family="sans-serif">DUBAI</text>
+    <text x="640" y="290" fill="#a0a0a8" font-size="11" font-family="sans-serif">SHARJAH</text>
+    <text x="730" y="170" fill="#a0a0a8" font-size="11" font-family="sans-serif">RAS AL KHAIMAH</text>
+    <text x="850" y="270" fill="#a0a0a8" font-size="11" font-family="sans-serif">FUJAIRAH</text>
+  `;
+  // Add pins
+  listings.forEach(l => {
+    const c = coordsFor(l.location);
+    const g = document.createElementNS(svgNS, "g");
+    g.setAttribute("class", "map-pin");
+    g.setAttribute("transform", `translate(${c.x}, ${c.y})`);
+    g.innerHTML = `
+      <circle r="14" fill="rgba(255, 56, 92, 0.15)" filter="url(#glow)"/>
+      <circle r="7" fill="var(--rose, #ff385c)" stroke="#fff" stroke-width="2" style="cursor:pointer"/>
+    `;
+    g.style.cursor = "pointer";
+    g.addEventListener("mouseenter", () => {
+      // Convert SVG coordinates to wrapper-relative pixel coordinates for the popup.
+      const r = svg.getBoundingClientRect();
+      const wr = wrap.getBoundingClientRect();
+      const px = (c.x / 1000) * r.width + (r.left - wr.left);
+      const py = (c.y / 600) * r.height + (r.top - wr.top);
+      showPopup(l, px, py);
+    });
+    g.addEventListener("mouseleave", () => setTimeout(hidePopup, 80));
+    g.addEventListener("click", () => navigate("/property/" + l.id));
+    svg.appendChild(g);
+  });
+
+  wrap.appendChild(svg);
+  wrap.appendChild(popup);
+  popup.addEventListener("mouseenter", () => popup.style.display = "block");
+  popup.addEventListener("mouseleave", hidePopup);
+
+  return wrap;
+}
+
 function listingCard(l) {
+  const fav = Favs.has(l.id);
+  const cmp = CompareSel.has(l.id);
+  const heartBtn = el("button", {
+    class: "heart" + (fav ? " on" : ""),
+    title: fav ? "Remove from favorites" : "Save to favorites",
+    onClick: e => { e.stopPropagation(); Favs.toggle(l.id); render(); }
+  }, fav ? "♥" : "♡");
+  const cmpBtn = el("button", {
+    class: "card-cmp" + (cmp ? " on" : ""),
+    title: cmp ? "Remove from compare" : "Add to compare",
+    onClick: e => { e.stopPropagation(); CompareSel.toggle(l.id); render(); }
+  }, cmp ? "✓ Compare" : "Compare");
   const card = el("article", {
     class: "listing-card",
     onClick: () => navigate("/property/" + l.id)
@@ -621,7 +830,8 @@ function listingCard(l) {
     el("div", { class: "imgwrap" }, [
       el("img", { src: l.images[0], alt: l.title, loading: "lazy" }),
       l.superhost ? el("div", { class: "superbadge" }, "Superhost") : null,
-      el("div", { class: "heart" }, "♡")
+      heartBtn,
+      cmpBtn
     ]),
     el("div", { class: "meta" }, [
       el("span", {}, l.location),
@@ -632,6 +842,123 @@ function listingCard(l) {
   ]);
   return card;
 }
+
+function compareBar() {
+  const ids = CompareSel.read();
+  if (ids.length < 2) return null;
+  return el("div", { class: "compare-bar" }, [
+    el("div", { class: "compare-bar-info" }, [
+      el("strong", {}, ids.length + " stays"),
+      el("span", {}, " selected · pick up to " + CompareSel.MAX)
+    ]),
+    el("div", { class: "compare-bar-actions" }, [
+      el("button", { class: "btn btn-ghost", onClick: () => { CompareSel.clear(); render(); } }, "Clear"),
+      el("button", { class: "btn btn-primary", onClick: () => navigate("/compare/" + ids.join("-")) }, "Compare " + ids.length + " stays")
+    ])
+  ]);
+}
+
+// ---------------- user: favorites ----------------
+
+route("/favorites", () => {
+  const ids = Favs.read();
+  const items = ids.map(id => Store.listings.byId(id)).filter(Boolean);
+
+  const grid = el("div", { class: "listings-grid" });
+  items.forEach(l => grid.appendChild(listingCard(l)));
+
+  const body = el("main", { class: "main" }, [
+    el("h1", { style: "margin:0 0 4px;font-size:28px" }, "Your favorites ❤️"),
+    el("p", { class: "sub", style: "color:var(--ink-soft);margin:0 0 24px" },
+      items.length === 0 ? "Tap the heart on any listing to save it here." :
+      `${items.length} ${items.length === 1 ? "stay" : "stays"} saved across the Emirates.`),
+    items.length === 0 ? el("div", { class: "empty" }, [
+      el("h3", {}, "No favorites yet"),
+      el("p", {}, "Browse listings and tap ♥ to save the ones you love."),
+      el("a", { class: "btn btn-primary", href: "#/" }, "Browse stays")
+    ]) : grid
+  ]);
+  shell([body, compareBar()]);
+});
+
+// ---------------- user: compare ----------------
+
+route("/compare/:ids", ({ ids }) => {
+  const idList = (ids || "").split("-").filter(Boolean);
+  const items = idList.map(id => Store.listings.byId(id)).filter(Boolean);
+  if (items.length < 2) { navigate("/"); return; }
+
+  // Compare rows: each row gets a "winner" highlight where applicable.
+  function bestOf(values, picker) {
+    const idx = values.reduce((best, v, i) => picker(v, values[best]) ? i : best, 0);
+    return idx;
+  }
+  const minPriceIdx = bestOf(items.map(l => l.pricePerNight), (a, b) => a < b);
+  const maxRatingIdx = bestOf(items.map(l => l.rating), (a, b) => a > b);
+  const maxBedsIdx = bestOf(items.map(l => l.beds), (a, b) => a > b);
+  const maxGuestsIdx = bestOf(items.map(l => l.guests), (a, b) => a > b);
+
+  function row(label, getter, winnerIdx) {
+    return el("div", { class: "cmp-row" }, [
+      el("div", { class: "cmp-label" }, label),
+      ...items.map((l, i) => {
+        const win = winnerIdx != null && i === winnerIdx && items.length > 1;
+        return el("div", { class: "cmp-cell" + (win ? " winner" : "") }, [
+          el("span", {}, String(getter(l))),
+          win ? el("span", { class: "cmp-best" }, "BEST") : null
+        ]);
+      })
+    ]);
+  }
+  function amenityRow(amenity) {
+    return el("div", { class: "cmp-row" }, [
+      el("div", { class: "cmp-label" }, amenity),
+      ...items.map(l => el("div", { class: "cmp-cell" + (l.amenities?.includes(amenity) ? " yes" : " no") },
+        l.amenities?.includes(amenity) ? "✓" : "—"))
+    ]);
+  }
+
+  // Union of amenities, sorted by frequency
+  const amenityCounts = {};
+  items.forEach(l => (l.amenities || []).forEach(a => amenityCounts[a] = (amenityCounts[a] || 0) + 1));
+  const allAmenities = Object.entries(amenityCounts)
+    .sort((a, b) => b[1] - a[1] - (a[0] > b[0] ? 0 : 0))
+    .map(([a]) => a);
+
+  const headRow = el("div", { class: "cmp-row cmp-head" }, [
+    el("div", { class: "cmp-label" }, ""),
+    ...items.map(l => el("div", { class: "cmp-cell cmp-card-cell" }, [
+      el("img", { src: l.images[0], alt: l.title }),
+      el("a", { class: "cmp-title", href: "#/property/" + l.id }, l.title),
+      el("div", { class: "cmp-loc" }, l.location),
+      el("button", { class: "cmp-remove", onClick: () => {
+        const next = idList.filter(x => x !== l.id);
+        if (next.length < 2) { CompareSel.clear(); navigate("/"); }
+        else navigate("/compare/" + next.join("-"));
+      } }, "Remove")
+    ]))
+  ]);
+
+  const body = el("main", { class: "main compare-page" }, [
+    el("h1", { style: "margin:0 0 4px;font-size:28px" }, "Compare stays"),
+    el("p", { class: "sub", style: "color:var(--ink-soft);margin:0 0 24px" }, "Side-by-side breakdown · best in each row highlighted"),
+    el("div", { class: "cmp-grid", style: `grid-template-columns: 180px repeat(${items.length}, 1fr)` }, [
+      headRow,
+      row("Type", l => l.type),
+      row("Price / night", l => fmtMoney(l.pricePerNight), minPriceIdx),
+      row("Rating", l => `★ ${l.rating}  · ${l.reviews} reviews`, maxRatingIdx),
+      row("Guests", l => l.guests, maxGuestsIdx),
+      row("Beds", l => l.beds, maxBedsIdx),
+      row("Baths", l => l.baths),
+      row("Superhost", l => l.superhost ? "✓" : "—")
+    ]),
+    el("div", { class: "cmp-section-head" }, "Amenities"),
+    el("div", { class: "cmp-grid", style: `grid-template-columns: 180px repeat(${items.length}, 1fr)` },
+      allAmenities.map(a => amenityRow(a))
+    )
+  ]);
+  shell(body);
+});
 
 // ---------------- user: property detail ----------------
 
