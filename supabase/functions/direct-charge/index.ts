@@ -26,7 +26,6 @@ function json(body: unknown, status = 200) {
 }
 
 const AED_TO_KWD = 0.0833;
-const SANDBOX_CARDS = new Set(["8888880000000001", "5453010000095539"]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -55,18 +54,13 @@ serve(async (req) => {
     const card = body.card || {};
     if (cartItemIds.length === 0) return json({ error: "cartItemIds required" }, 400);
 
-    // Validate card up-front so KNET tab feels like a real form.
+    // Validate card up-front so the KNET tab feels like a real form.
     if (method === "knet") {
       const num = String(card.number || "").replace(/\s/g, "");
-      if (num.length < 12) return json({ error: "Card number is too short" }, 400);
+      if (!/^\d{12,19}$/.test(num)) return json({ error: "Card number is invalid" }, 400);
       if (!/^\d{1,2}$/.test(String(card.expiryMonth || ""))) return json({ error: "Expiry month is invalid" }, 400);
       if (!/^\d{1,4}$/.test(String(card.expiryYear  || ""))) return json({ error: "Expiry year is invalid" }, 400);
       if (!String(card.securityCode || "")) return json({ error: "PIN is required" }, 400);
-      if (!SANDBOX_CARDS.has(num)) {
-        return json({
-          error: "Sandbox accepts the demo card 8888 8800 0000 0001 only. Click 'Fill demo card' to auto-complete.",
-        }, 400);
-      }
     }
 
     const { data: items, error } = await supabase

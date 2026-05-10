@@ -1286,20 +1286,6 @@ route("/cart", () => {
   });
   checkoutErr = el("div", { class: "pay-error", style: "display:none" });
 
-  // Sandbox test credentials — visible right next to the Pay Now button so
-  // the user knows exactly what to type on the MyFatoorah hosted page.
-  const sandboxCreds = el("div", { class: "sandbox-creds" }, [
-    el("div", { class: "sandbox-creds-head", html: '<span class="sandbox-tag">SANDBOX</span> <strong>KNET test details</strong>' }),
-    el("div", { class: "sandbox-creds-body", html: `
-      <div class="sc-row"><span>Mobile (if asked)</span><code>50000000</code></div>
-      <div class="sc-row"><span>KNET card number</span><code>8888880000000001</code></div>
-      <div class="sc-row"><span>Expiry</span><code>09/25</code> <span class="sc-or">or any future date</span></div>
-      <div class="sc-row"><span>PIN</span><code>1234</code></div>
-      <div class="sc-row"><span>OTP</span><code>1111</code></div>
-    ` }),
-    el("div", { class: "sandbox-creds-foot" }, "No real money is charged. The card above is the MyFatoorah demo issuer.")
-  ]);
-
   const body = el("main", { class: "main cart-page" }, [
     el("h1", { style: "margin:0 0 4px;font-size:28px" }, "Your cart 🛒"),
     el("p", { class: "sub", style: "color:var(--ink-soft);margin:0 0 24px" },
@@ -1317,7 +1303,6 @@ route("/cart", () => {
         ]),
         checkoutErr,
         checkoutBtn,
-        sandboxCreds,
         el("div", { class: "cart-secure" }, [
           el("span", {}, "🔒 Secured payments by "),
           el("strong", {}, "MyFatoorah"),
@@ -1389,15 +1374,6 @@ route("/checkout", () => {
     });
     [expMIn, expYIn, cvcIn].forEach(i => i.addEventListener("input", () => { i.value = i.value.replace(/\D/g, ""); }));
 
-    const fillBtn = el("button", { type: "button", class: "chk-autofill" }, "✨ Fill demo card");
-    fillBtn.addEventListener("click", () => {
-      numIn.value = "8888 8800 0000 0001";
-      expMIn.value = "09";
-      expYIn.value = "25";
-      cvcIn.value = "1234";
-      nameIn.value = nameIn.value || (Store.session.current()?.name || "Demo Guest");
-    });
-
     const submitBtn = el("button", { type: "submit", class: "btn btn-paynow chk-submit" }, [
       el("span", { class: "paynow-icon" }, "🔒"),
       document.createTextNode(" Pay " + fmtMoney(total))
@@ -1415,14 +1391,10 @@ route("/checkout", () => {
           expiryMonth: expMIn.value,
           expiryYear: expYIn.value,
           securityCode: cvcIn.value,
-          holderName: nameIn.value.trim() || "Demo Guest"
+          holderName: nameIn.value.trim() || "Guest"
         }
       });
     }}, [
-      el("div", { class: "chk-banner-mini" }, [
-        el("span", { class: "sandbox-tag" }, "SANDBOX"),
-        el("span", {}, "Use any of the demo card details below — auto-fill saves a few keystrokes.")
-      ]),
       el("label", {}, "Card number"),
       numIn,
       el("div", { class: "chk-row" }, [
@@ -1432,12 +1404,7 @@ route("/checkout", () => {
       ]),
       el("label", {}, "Cardholder name"),
       nameIn,
-      el("div", { class: "chk-actions" }, [fillBtn, submitBtn]),
-      el("div", { class: "sandbox-creds-body chk-test-grid", html: `
-        <div class="sc-row"><span>KNET card</span><code>8888 8800 0000 0001</code></div>
-        <div class="sc-row"><span>Expiry</span><code>09 / 25</code></div>
-        <div class="sc-row"><span>PIN</span><code>1234</code></div>
-      ` })
+      el("div", { class: "chk-actions" }, [submitBtn])
     ]);
     return form;
   }
