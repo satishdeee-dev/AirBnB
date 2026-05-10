@@ -1280,23 +1280,9 @@ route("/cart", () => {
     el("span", { class: "paynow-icon" }, "🔒"),
     document.createTextNode(" Pay Now · " + fmtMoney(total))
   ]);
-  checkoutBtn.addEventListener("click", async () => {
+  checkoutBtn.addEventListener("click", () => {
     if (items.length === 0) return;
-    checkoutBtn.disabled = true;
-    checkoutBtn.innerHTML = '<span class="cart-spinner"></span> Connecting to MyFatoorah…';
-    if (checkoutErr) { checkoutErr.textContent = ""; checkoutErr.style.display = "none"; }
-    try {
-      const { url } = await Store.cart.checkout(items.map(c => c.id));
-      sessionStorage.setItem("stayly.checkout.cartIds", items.map(c => c.id).join(","));
-      window.location.assign(url);
-    } catch (err) {
-      checkoutBtn.disabled = false;
-      checkoutBtn.innerHTML = '<span class="paynow-icon">🔒</span> Pay Now · ' + fmtMoney(total);
-      if (checkoutErr) {
-        checkoutErr.textContent = err.message || String(err);
-        checkoutErr.style.display = "block";
-      }
-    }
+    navigate("/checkout");
   });
   checkoutErr = el("div", { class: "pay-error", style: "display:none" });
 
@@ -1343,6 +1329,202 @@ route("/cart", () => {
   shell([body, compareBar()]);
 });
 
+// ---------------- checkout (inline KNET + Apple Pay) ----------------
+
+route("/checkout", () => {
+  const items = Store.cart.all();
+  if (items.length === 0) { navigate("/cart"); return; }
+  const total = items.reduce((s, c) => s + c.total, 0);
+  const totalKwd = (total * 0.0833).toFixed(3);
+
+  let method = "knet"; // "knet" | "applepay"
+  let busy = false;
+  let errBox;
+
+  function startCharge(opts) {
+    if (busy) return;
+    busy = true;
+    if (errBox) { errBox.style.display = "none"; errBox.textContent = ""; }
+    const submitBtn = document.querySelector(".chk-submit");
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="cart-spinner"></span> Processing payment…';
+    }
+    Store.cart.directCharge({
+      cartItemIds: items.map(c => c.id),
+      method,
+      card: opts.card
+    }).then(async res => {
+      sessionStorage.setItem("stayly.checkout.cartIds", items.map(c => c.id).join(","));
+      // Refresh local cache so /trips and the cart count immediately show new state
+      try { await Promise.all([Supa.cart.refresh(), Supa.bookings.refresh()]); } catch {}
+      // Honour either { mode:"success" } from our edge function or a real redirect URL
+      if (res.mode === "success" || /payment-success/.test(res.url || "")) {
+        navigate("/payment-success?paymentId=" + encodeURIComponent(res.paymentId || "") + "&direct=1");
+      } else {
+        window.location.assign(res.url);
+      }
+    }).catch(err => {
+      busy = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = method === "applepay" ? '<span></span> Pay with Apple Pay' : `<span class="paynow-icon">🔒</span> Pay ${fmtMoney(total)}`;
+      }
+      if (errBox) {
+        errBox.textContent = err.message || String(err);
+        errBox.style.display = "block";
+      }
+    });
+  }
+
+  function knetForm() {
+    const numIn = el("input", { id: "chk_num", placeholder: "8888 8800 0000 0001", inputmode: "numeric", maxlength: "23", autocomplete: "cc-number" });
+    const expMIn = el("input", { id: "chk_em", placeholder: "MM", inputmode: "numeric", maxlength: "2", autocomplete: "cc-exp-month" });
+    const expYIn = el("input", { id: "chk_ey", placeholder: "YY", inputmode: "numeric", maxlength: "2", autocomplete: "cc-exp-year" });
+    const cvcIn = el("input", { id: "chk_cvc", placeholder: "PIN", inputmode: "numeric", maxlength: "4", type: "password", autocomplete: "cc-csc" });
+    const nameIn = el("input", { id: "chk_name", placeholder: "Name on card", autocomplete: "cc-name" });
+
+    numIn.addEventListener("input", () => {
+      numIn.value = numIn.value.replace(/\D/g, "").slice(0, 19).replace(/(.{4})/g, "$1 ").trim();
+    });
+    [expMIn, expYIn, cvcIn].forEach(i => i.addEventListener("input", () => { i.value = i.value.replace(/\D/g, ""); }));
+
+    const fillBtn = el("button", { type: "button", class: "chk-autofill" }, "✨ Fill demo card");
+    fillBtn.addEventListener("click", () => {
+      numIn.value = "8888 8800 0000 0001";
+      expMIn.value = "09";
+      expYIn.value = "25";
+      cvcIn.value = "1234";
+      nameIn.value = nameIn.value || (Store.session.current()?.name || "Demo Guest");
+    });
+
+    const submitBtn = el("button", { type: "submit", class: "btn btn-paynow chk-submit" }, [
+      el("span", { class: "paynow-icon" }, "🔒"),
+      document.createTextNode(" Pay " + fmtMoney(total))
+    ]);
+
+    const form = el("form", { class: "chk-form", onSubmit: e => {
+      e.preventDefault();
+      const num = numIn.value.replace(/\s/g, "");
+      if (num.length < 12) return showErr("Enter a card number.");
+      if (!expMIn.value || !expYIn.value) return showErr("Enter the expiry.");
+      if (!cvcIn.value) return showErr("Enter the PIN.");
+      startCharge({
+        card: {
+          number: num,
+          expiryMonth: expMIn.value,
+          expiryYear: expYIn.value,
+          securityCode: cvcIn.value,
+          holderName: nameIn.value.trim() || "Demo Guest"
+        }
+      });
+    }}, [
+      el("div", { class: "chk-banner-mini" }, [
+        el("span", { class: "sandbox-tag" }, "SANDBOX"),
+        el("span", {}, "Use any of the demo card details below — auto-fill saves a few keystrokes.")
+      ]),
+      el("label", {}, "Card number"),
+      numIn,
+      el("div", { class: "chk-row" }, [
+        el("div", {}, [el("label", {}, "Expiry month"), expMIn]),
+        el("div", {}, [el("label", {}, "Expiry year"), expYIn]),
+        el("div", {}, [el("label", {}, "PIN"), cvcIn])
+      ]),
+      el("label", {}, "Cardholder name"),
+      nameIn,
+      el("div", { class: "chk-actions" }, [fillBtn, submitBtn]),
+      el("div", { class: "sandbox-creds-body chk-test-grid", html: `
+        <div class="sc-row"><span>KNET card</span><code>8888 8800 0000 0001</code></div>
+        <div class="sc-row"><span>Expiry</span><code>09 / 25</code></div>
+        <div class="sc-row"><span>PIN</span><code>1234</code></div>
+      ` })
+    ]);
+    return form;
+  }
+
+  function applepayPanel() {
+    const submitBtn = el("button", { type: "submit", class: "btn-applepay chk-submit" }, [
+      el("span", { class: "ap-mark" }, ""),
+      document.createTextNode(" Pay")
+    ]);
+    return el("form", { class: "chk-form chk-form-applepay", onSubmit: e => { e.preventDefault(); startCharge({}); } }, [
+      el("div", { class: "ap-hero" }, [
+        el("div", { class: "ap-circle" }, "👆"),
+        el("div", { class: "ap-touch" }, "Touch ID to confirm"),
+        el("div", { class: "ap-amount", html: `${fmtMoney(total)} <span>(${totalKwd} KWD)</span>` })
+      ]),
+      submitBtn,
+      el("div", { class: "ap-note" }, "Demo only — Apple Pay sandbox uses a baked-in card on the server.")
+    ]);
+  }
+
+  function showErr(msg) {
+    if (errBox) { errBox.textContent = msg; errBox.style.display = "block"; }
+  }
+
+  function rerender() {
+    const tabs = el("div", { class: "chk-tabs" }, [
+      tabBtn("knet", "KNET", "💳"),
+      tabBtn("applepay", " Pay", "")
+    ]);
+    function tabBtn(m, label, ico) {
+      const b = el("button", { type: "button", class: "chk-tab" + (method === m ? " active" : "") }, ico ? ico + " " + label : label);
+      b.addEventListener("click", () => { method = m; rerender(); });
+      return b;
+    }
+    errBox = el("div", { class: "pay-error", style: "display:none" });
+
+    const main = el("main", { class: "step-main" }, [
+      el("h1", { style: "margin:0 0 4px" }, "Pay for your stays"),
+      el("p", { class: "sub", style: "color:var(--ink-soft);margin:0 0 24px" }, "Choose how you'd like to pay. All transactions run through MyFatoorah."),
+      tabs,
+      errBox,
+      method === "knet" ? knetForm() : applepayPanel()
+    ]);
+
+    const page = el("div", { class: "step-page step-checkout" }, [
+      el("div", { class: "step-progress" }, [
+        el("div", { class: "step-dot done" }, "✓"), el("div", { class: "step-line done" }),
+        el("div", { class: "step-dot done" }, "✓"), el("div", { class: "step-line done" }),
+        el("div", { class: "step-dot active" }, "3"),
+      ]),
+      el("div", { class: "step-progress-labels" }, [
+        el("span", { class: "done" }, "Cart"),
+        el("span", { class: "done" }, "Choose method"),
+        el("span", { class: "active" }, "Pay")
+      ]),
+      el("div", { class: "step-shell" }, [
+        main,
+        el("aside", { class: "summary-card" }, [
+          ...items.map(c => {
+            const l = Store.listings.byId(c.listingId);
+            return el("div", { class: "summary-line" }, [
+              el("img", { src: l?.images?.[0] || "", alt: "" }),
+              el("div", {}, [
+                el("div", { class: "summary-listing-title" }, (l?.title || "Stay").slice(0, 36)),
+                el("div", { class: "summary-listing-loc" }, fmtDate(c.checkIn) + " → " + fmtDate(c.checkOut))
+              ]),
+              el("strong", {}, fmtMoney(c.total))
+            ]);
+          }),
+          el("div", { class: "total", html: `<span>Total</span><span>${fmtMoney(total)}</span>` }),
+          el("div", { class: "chk-kwd" }, "≈ KWD " + totalKwd + " · charged via MyFatoorah"),
+          el("div", { class: "cart-secure", style: "margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:11px" }, [
+            el("span", {}, "🔒 Secured by "),
+            el("strong", {}, "MyFatoorah")
+          ])
+        ])
+      ]),
+      el("div", { class: "step-actions" }, [
+        el("a", { class: "btn btn-ghost btn-lg", href: "#/cart" }, "← Back to cart")
+      ])
+    ]);
+    shell(page);
+  }
+
+  rerender();
+});
+
 // ---------------- payment callbacks ----------------
 // MyFatoorah redirects to /payment-success on success and /payment-failed on
 // failure. Both routes parse paymentId/cartIds from the hash query, run the
@@ -1353,6 +1535,7 @@ function paymentResultPage(presumedSuccess) {
     const qs = location.hash.split("?")[1] || "";
     const params = new URLSearchParams(qs);
     const paymentId = params.get("paymentId");
+    const direct = params.get("direct") === "1";
     const cartIdsParam = params.get("cartIds") || sessionStorage.getItem("stayly.checkout.cartIds") || "";
     const cartIds = cartIdsParam.split(",").filter(Boolean);
 
@@ -1362,6 +1545,22 @@ function paymentResultPage(presumedSuccess) {
       el("p", { class: "sub" }, "Please don't close this window — confirming with MyFatoorah.")
     ]);
     shell(el("main", { class: "main callback-page" }, stage));
+
+    // If we came directly from our /checkout page (direct-charge already
+    // booked + marked paid), skip the verify-payment round-trip.
+    if (direct && presumedSuccess) {
+      sessionStorage.removeItem("stayly.checkout.cartIds");
+      stage.innerHTML = "";
+      stage.classList.add("success");
+      stage.appendChild(el("div", { class: "callback-tick", html: '<svg viewBox="0 0 64 64" width="80" height="80"><circle cx="32" cy="32" r="28" fill="none" stroke="#4ade80" stroke-width="3"/><path d="M20 33 L29 42 L46 24" fill="none" stroke="#4ade80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' }));
+      stage.appendChild(el("h2", {}, "Payment successful 🎉"));
+      stage.appendChild(el("p", { class: "sub" }, paymentId ? `Reference ${paymentId}. Bookings have been added to your trips.` : "Bookings have been added to your trips."));
+      stage.appendChild(el("div", { class: "callback-actions" }, [
+        el("a", { class: "btn btn-paynow", href: "#/trips" }, "View my trips"),
+        el("a", { class: "btn btn-ghost", href: "#/" }, "Browse more stays")
+      ]));
+      return;
+    }
 
     (async () => {
       try {

@@ -50,6 +50,7 @@ const Store = {
     add: item => Supa.cart.add(item),
     remove: id => Supa.cart.remove(id),
     checkout: ids => Supa.cart.checkout(ids),
+    directCharge: opts => Supa.cart.directCharge(opts),
     verify: opts => Supa.cart.verify(opts)
   },
 

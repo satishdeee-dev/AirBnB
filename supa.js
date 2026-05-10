@@ -343,6 +343,22 @@ const Supa = (function () {
     cache.cart = cache.cart.filter(c => c.id !== id);
     onChangeCb();
   }
+  async function directCharge({ cartItemIds, method, card }) {
+    if (!session) throw new Error("Not signed in");
+    const fnUrl = `${SUPABASE_URL}/functions/v1/direct-charge`;
+    const resp = await fetch(fnUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+        "apikey": SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ cartItemIds, method, card })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || data.detail?.Message || data.detail || "Charge failed");
+    return data;
+  }
   async function checkoutCart(cartItemIds) {
     if (!session) throw new Error("Not signed in");
     const fnUrl = `${SUPABASE_URL}/functions/v1/create-payment`;
@@ -399,7 +415,7 @@ const Supa = (function () {
     listings: { create: createListing, update: updateListing, remove: removeListing, refresh: refreshListings },
     bookings: { create: createBooking, cancel: cancelBooking, remove: deleteBooking, cancellationQuote, refresh: refreshBookings },
     tickets: { create: createTicket, update: updateTicket, remove: removeTicket, refresh: refreshTickets },
-    cart: { add: addToCart, remove: removeCartItem, checkout: checkoutCart, verify: verifyPayment, refresh: refreshCart },
+    cart: { add: addToCart, remove: removeCartItem, checkout: checkoutCart, directCharge, verify: verifyPayment, refresh: refreshCart },
     users: { remove: removeUser, refresh: refreshUsers }
   };
 })();
