@@ -45,6 +45,14 @@ const Store = {
     remove: id => Supa.tickets.remove(id)
   },
 
+  cart: {
+    all: () => Supa.cache.cart,
+    add: item => Supa.cart.add(item),
+    remove: id => Supa.cart.remove(id),
+    checkout: ids => Supa.cart.checkout(ids),
+    verify: opts => Supa.cart.verify(opts)
+  },
+
   resetSeed: () => { /* no-op — seed lives server-side now */ }
 };
 

@@ -19,7 +19,8 @@ const Supa = (function () {
     listings: [],
     bookings: [],
     tickets: [],
-    users: []
+    users: [],
+    cart: []
   };
   let onChangeCb = () => {};
 
@@ -58,7 +59,7 @@ const Supa = (function () {
     if (!client) return;
     const tasks = [refreshListings()];
     if (session) {
-      tasks.push(refreshBookings());
+      tasks.push(refreshBookings(), refreshCart());
       if (isAdmin()) tasks.push(refreshTickets(), refreshUsers());
     }
     await Promise.all(tasks);
@@ -83,6 +84,33 @@ const Supa = (function () {
     const { data, error } = await client.from("tickets").select("*").order("created_at", { ascending: false });
     if (error) { console.warn("tickets:", error.message); return; }
     cache.tickets = (data || []).map(rowToTicket);
+  }
+
+  async function refreshCart() {
+    if (!session) { cache.cart = []; return; }
+    const { data, error } = await client
+      .from("cart_items").select("*")
+      .eq("user_id", session.user.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    if (error) { console.warn("cart:", error.message); return; }
+    cache.cart = (data || []).map(rowToCartItem);
+  }
+
+  function rowToCartItem(r) {
+    return {
+      id: r.id,
+      userId: r.user_id,
+      listingId: r.listing_id,
+      checkIn: new Date(r.check_in).getTime(),
+      checkOut: new Date(r.check_out).getTime(),
+      guests: r.guests, adults: r.adults, children: r.children,
+      meals: r.meals,
+      total: Number(r.total),
+      status: r.status,
+      invoiceId: r.invoice_id,
+      createdAt: new Date(r.created_at).getTime()
+    };
   }
 
   async function refreshUsers() {
@@ -288,6 +316,69 @@ const Supa = (function () {
     onChangeCb();
   }
 
+  // ---------- cart ----------
+  async function addToCart(item) {
+    const row = {
+      user_id: session.user.id,
+      listing_id: item.listingId,
+      check_in: new Date(item.checkIn).toISOString(),
+      check_out: new Date(item.checkOut).toISOString(),
+      guests: item.guests,
+      adults: item.adults || item.guests,
+      children: item.children || 0,
+      meals: item.meals || null,
+      total: item.total,
+      status: "pending"
+    };
+    const { data, error } = await client.from("cart_items").insert(row).select().single();
+    if (error) throw error;
+    const ci = rowToCartItem(data);
+    cache.cart.unshift(ci);
+    onChangeCb();
+    return ci;
+  }
+  async function removeCartItem(id) {
+    const { error } = await client.from("cart_items").delete().eq("id", id);
+    if (error) throw error;
+    cache.cart = cache.cart.filter(c => c.id !== id);
+    onChangeCb();
+  }
+  async function checkoutCart(cartItemIds) {
+    if (!session) throw new Error("Not signed in");
+    const fnUrl = `${SUPABASE_URL}/functions/v1/create-payment`;
+    const resp = await fetch(fnUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+        "apikey": SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ cartItemIds })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || data.detail || "Checkout failed");
+    return data; // { url, invoiceId, total }
+  }
+  async function verifyPayment(opts) {
+    if (!session) throw new Error("Not signed in");
+    const fnUrl = `${SUPABASE_URL}/functions/v1/verify-payment`;
+    const resp = await fetch(fnUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+        "apikey": SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(opts)
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || data.detail || "Verify failed");
+    await refreshCart();
+    await refreshBookings();
+    onChangeCb();
+    return data;
+  }
+
   // ---------- users ----------
   async function removeUser(id) {
     // Hard-delete only allowed for admin via service role; fall back to disabling profile row.
@@ -308,6 +399,7 @@ const Supa = (function () {
     listings: { create: createListing, update: updateListing, remove: removeListing, refresh: refreshListings },
     bookings: { create: createBooking, cancel: cancelBooking, remove: deleteBooking, cancellationQuote, refresh: refreshBookings },
     tickets: { create: createTicket, update: updateTicket, remove: removeTicket, refresh: refreshTickets },
+    cart: { add: addToCart, remove: removeCartItem, checkout: checkoutCart, verify: verifyPayment, refresh: refreshCart },
     users: { remove: removeUser, refresh: refreshUsers }
   };
 })();

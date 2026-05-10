@@ -469,6 +469,13 @@ function header({ active = "" } = {}) {
       ]),
       el("div", { class: "header-right" }, [
         session.role === "user" ? (function(){
+          const cartCount = Store.cart.all().length;
+          return el("a", { class: "host-link cart-link", href: "#/cart", title: "Cart" }, [
+            document.createTextNode("🛒 "),
+            cartCount ? el("span", { class: "cart-count" }, String(cartCount)) : null
+          ]);
+        })() : null,
+        session.role === "user" ? (function(){
           const favCount = Favs.read().length;
           const favLink = el("a", { class: "host-link fav-link", href: "#/favorites", title: "Favorites" }, [
             document.createTextNode("♥ "),
@@ -1185,8 +1192,31 @@ route("/booking/new/meals", () => {
     Draft.write({ ...cur, meals });
   }
 
-  const continueBtn = el("button", { class: "btn btn-primary btn-lg" }, "Continue to payment");
-  continueBtn.addEventListener("click", () => navigate("/booking/new/payment"));
+  const continueBtn = el("button", { class: "btn btn-primary btn-lg" }, "Add to cart");
+  continueBtn.addEventListener("click", async () => {
+    continueBtn.disabled = true;
+    continueBtn.textContent = "Adding…";
+    try {
+      const breakdown = priceBreakdown(Draft.read());
+      await Store.cart.add({
+        listingId: draft.listingId,
+        checkIn: draft.dateIn,
+        checkOut: draft.dateOut,
+        adults: draft.adults,
+        children: draft.children,
+        guests: (draft.adults || 0) + (draft.children || 0),
+        meals,
+        total: breakdown.total
+      });
+      Draft.clear();
+      toast("Added to cart");
+      navigate("/cart");
+    } catch (err) {
+      toast("Add failed: " + (err.message || err));
+      continueBtn.disabled = false;
+      continueBtn.textContent = "Add to cart";
+    }
+  });
   const backBtn = el("button", { class: "btn btn-ghost btn-lg" }, "← Back to listing");
   backBtn.addEventListener("click", () => navigate("/property/" + l.id));
 
@@ -1210,6 +1240,142 @@ route("/booking/new/meals", () => {
   ]);
   shell(page);
   renderMeals();
+});
+
+// ---------------- cart ----------------
+
+route("/cart", () => {
+  const items = Store.cart.all();
+  const total = items.reduce((s, c) => s + c.total, 0);
+
+  function rowFor(c) {
+    const l = Store.listings.byId(c.listingId);
+    const nights = Math.max(1, Math.round((c.checkOut - c.checkIn) / 86400000));
+    const removeBtn = el("button", { class: "cart-remove" }, "Remove");
+    removeBtn.addEventListener("click", async () => {
+      try { await Store.cart.remove(c.id); toast("Removed from cart"); }
+      catch (err) { toast("Remove failed: " + err.message); }
+    });
+    const mealLines = MEALS.filter(m => c.meals?.[m.id]?.enabled).map(m =>
+      el("span", { class: "cart-meal-pill" + (m.free ? " free" : "") }, m.emoji + " " + m.label.replace("Continental ", "") + (m.free ? " · free" : ""))
+    );
+    return el("article", { class: "cart-row" }, [
+      el("img", { class: "cart-thumb", src: l ? l.images[0] : "", alt: l ? l.title : "" }),
+      el("div", { class: "cart-body" }, [
+        el("div", { class: "cart-title" }, l ? l.title : "Listing removed"),
+        el("div", { class: "cart-loc" }, l ? l.location : ""),
+        el("div", { class: "cart-meta" }, `${fmtDate(c.checkIn)} → ${fmtDate(c.checkOut)} · ${nights} night${nights === 1 ? "" : "s"} · ${c.adults || c.guests} adults${c.children ? ` · ${c.children} children` : ""}`),
+        mealLines.length ? el("div", { class: "cart-meals" }, mealLines) : null
+      ]),
+      el("div", { class: "cart-price" }, [
+        el("strong", {}, fmtMoney(c.total)),
+        removeBtn
+      ])
+    ]);
+  }
+
+  let checkoutErr;
+  const checkoutBtn = el("button", { class: "btn btn-primary btn-lg btn-block" }, [
+    el("span", {}, "🔒 "),
+    document.createTextNode("Checkout · " + fmtMoney(total))
+  ]);
+  checkoutBtn.addEventListener("click", async () => {
+    if (items.length === 0) return;
+    checkoutBtn.disabled = true;
+    checkoutBtn.innerHTML = "<span class='cart-spinner'></span> Connecting to MyFatoorah…";
+    if (checkoutErr) { checkoutErr.textContent = ""; checkoutErr.style.display = "none"; }
+    try {
+      const { url } = await Store.cart.checkout(items.map(c => c.id));
+      // Store the cart ids in sessionStorage so the callback knows which to verify
+      sessionStorage.setItem("stayly.checkout.cartIds", items.map(c => c.id).join(","));
+      window.location.assign(url);
+    } catch (err) {
+      checkoutBtn.disabled = false;
+      checkoutBtn.innerHTML = "🔒 Checkout · " + fmtMoney(total);
+      if (checkoutErr) {
+        checkoutErr.textContent = err.message || String(err);
+        checkoutErr.style.display = "block";
+      }
+    }
+  });
+  checkoutErr = el("div", { class: "pay-error", style: "display:none" });
+
+  const body = el("main", { class: "main cart-page" }, [
+    el("h1", { style: "margin:0 0 4px;font-size:28px" }, "Your cart 🛒"),
+    el("p", { class: "sub", style: "color:var(--ink-soft);margin:0 0 24px" },
+      items.length === 0 ? "Nothing in your cart yet. Browse listings to add a stay." :
+      `${items.length} ${items.length === 1 ? "stay" : "stays"} ready to check out · grand total ${fmtMoney(total)}`),
+    items.length === 0 ? el("div", { class: "empty" }, [
+      el("h3", {}, "Cart is empty"),
+      el("a", { class: "btn btn-primary", href: "#/" }, "Browse stays")
+    ]) : el("div", { class: "cart-shell" }, [
+      el("div", { class: "cart-list" }, items.map(rowFor)),
+      el("aside", { class: "cart-summary" }, [
+        el("div", { class: "summary-totals" }, [
+          ...items.map(c => el("div", { class: "row", html: `<span>${escapeHtml(Store.listings.byId(c.listingId)?.title || c.listingId).slice(0, 32)}…</span><span>${fmtMoney(c.total)}</span>` })),
+          el("div", { class: "total", html: `<span>Grand total</span><span>${fmtMoney(total)}</span>` })
+        ]),
+        checkoutErr,
+        checkoutBtn,
+        el("div", { class: "cart-secure" }, [
+          el("span", {}, "🔒 Secured payments by "),
+          el("strong", {}, "MyFatoorah"),
+          el("div", { class: "cart-secure-sub" }, "Visa · Mastercard · KNET · Apple Pay · Mada")
+        ])
+      ])
+    ])
+  ]);
+  shell([body, compareBar()]);
+});
+
+// ---------------- payment callback ----------------
+
+route("/payment-callback", () => {
+  const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  const paymentId = params.get("paymentId");
+  const cartIdsParam = params.get("cartIds") || sessionStorage.getItem("stayly.checkout.cartIds") || "";
+  const cartIds = cartIdsParam.split(",").filter(Boolean);
+
+  const stage = el("div", { class: "callback-stage" }, [
+    el("div", { class: "callback-spinner" }),
+    el("h2", {}, "Verifying your payment…"),
+    el("p", { class: "sub" }, "Please don't close this window — confirming with MyFatoorah.")
+  ]);
+
+  const body = el("main", { class: "main callback-page" }, stage);
+  shell(body);
+
+  (async () => {
+    try {
+      if (!paymentId && cartIds.length === 0) throw new Error("No payment reference returned");
+      const result = await Store.cart.verify({ paymentId, cartIds });
+      sessionStorage.removeItem("stayly.checkout.cartIds");
+      stage.innerHTML = "";
+      if (result.paid) {
+        stage.appendChild(el("div", { class: "callback-tick", html: '<svg viewBox="0 0 64 64" width="80" height="80"><circle cx="32" cy="32" r="28" fill="none" stroke="#4ade80" stroke-width="3"/><path d="M20 33 L29 42 L46 24" fill="none" stroke="#4ade80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' }));
+        stage.appendChild(el("h2", {}, "Payment confirmed"));
+        stage.appendChild(el("p", { class: "sub" }, `${result.bookingIds?.length || 0} ${(result.bookingIds?.length || 0) === 1 ? "booking" : "bookings"} added to your trips.`));
+        stage.appendChild(el("div", { style: "display:flex;gap:12px;justify-content:center;margin-top:20px" }, [
+          el("a", { class: "btn btn-primary", href: "#/trips" }, "View my trips"),
+          el("a", { class: "btn btn-ghost", href: "#/" }, "Browse more stays")
+        ]));
+      } else {
+        stage.appendChild(el("div", { style: "font-size:48px" }, "⚠️"));
+        stage.appendChild(el("h2", {}, "Payment not completed"));
+        stage.appendChild(el("p", { class: "sub" }, `Status: ${result.status || "Unknown"}. Your cart is still saved.`));
+        stage.appendChild(el("div", { style: "display:flex;gap:12px;justify-content:center;margin-top:20px" }, [
+          el("a", { class: "btn btn-primary", href: "#/cart" }, "Back to cart"),
+          el("a", { class: "btn btn-ghost", href: "#/" }, "Browse stays")
+        ]));
+      }
+    } catch (err) {
+      stage.innerHTML = "";
+      stage.appendChild(el("div", { style: "font-size:48px" }, "❌"));
+      stage.appendChild(el("h2", {}, "Verification failed"));
+      stage.appendChild(el("p", { class: "sub" }, (err.message || String(err))));
+      stage.appendChild(el("a", { class: "btn btn-primary", href: "#/cart" }, "Back to cart"));
+    }
+  })();
 });
 
 // ---------------- step 3: payment page ----------------
