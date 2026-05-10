@@ -88,7 +88,7 @@ serve(async (req) => {
         PaymentMethodId: 1,
         CustomerName: customerName,
         DisplayCurrencyIso: "KWD",
-        MobileCountryCode: "+965",
+        MobileCountryCode: "965",
         CustomerMobile: "50000000",
         CustomerEmail: customerEmail,
         InvoiceValue: totalKwd,
@@ -97,6 +97,11 @@ serve(async (req) => {
         Language: "EN",
         CustomerReference: user.id.slice(0, 16),
         UserDefinedField: cartIdsParam,
+        InvoiceItems: items.map((it: any) => ({
+          ItemName: `Stayly stay (${it.listing_id})`,
+          Quantity: 1,
+          UnitPrice: Number((Number(it.total) * AED_TO_KWD).toFixed(3)),
+        })),
       }),
     });
 

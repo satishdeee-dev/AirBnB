@@ -1504,6 +1504,55 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 }
 .cart-secure-sub { margin-top: 4px; font-size: 11px; }
 
+/* sandbox test credentials card — surfaced right under the Pay Now button */
+.sandbox-creds {
+  margin-top: 14px;
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.08) 0%, rgba(250, 204, 21, 0.06) 100%);
+  border: 1px dashed rgba(250, 204, 21, 0.5);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.sandbox-creds-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.sandbox-creds-head strong { font-size: 13px; }
+.sandbox-tag {
+  display: inline-block;
+  background: #FACC15; color: #1E3A8A;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 999px;
+}
+.sandbox-creds-body { display: flex; flex-direction: column; gap: 4px; }
+.sc-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 3px 0;
+}
+.sc-row span { color: var(--ink-soft); flex: 1; min-width: 110px; font-size: 12px; }
+.sc-row code {
+  background: var(--bg);
+  color: var(--ink);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Mono", "Menlo", monospace;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--line);
+  user-select: all;
+}
+.sc-or { color: var(--ink-soft); font-size: 11px; font-style: italic; flex: 0; }
+.sandbox-creds-foot {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
 .cart-spinner {
   display: inline-block; width: 14px; height: 14px;
   border: 2px solid rgba(255,255,255,0.3);

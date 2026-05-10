@@ -1300,6 +1300,20 @@ route("/cart", () => {
   });
   checkoutErr = el("div", { class: "pay-error", style: "display:none" });
 
+  // Sandbox test credentials — visible right next to the Pay Now button so
+  // the user knows exactly what to type on the MyFatoorah hosted page.
+  const sandboxCreds = el("div", { class: "sandbox-creds" }, [
+    el("div", { class: "sandbox-creds-head", html: '<span class="sandbox-tag">SANDBOX</span> <strong>KNET test details</strong>' }),
+    el("div", { class: "sandbox-creds-body", html: `
+      <div class="sc-row"><span>Mobile (if asked)</span><code>50000000</code></div>
+      <div class="sc-row"><span>KNET card number</span><code>8888880000000001</code></div>
+      <div class="sc-row"><span>Expiry</span><code>09/25</code> <span class="sc-or">or any future date</span></div>
+      <div class="sc-row"><span>PIN</span><code>1234</code></div>
+      <div class="sc-row"><span>OTP</span><code>1111</code></div>
+    ` }),
+    el("div", { class: "sandbox-creds-foot" }, "No real money is charged. The card above is the MyFatoorah demo issuer.")
+  ]);
+
   const body = el("main", { class: "main cart-page" }, [
     el("h1", { style: "margin:0 0 4px;font-size:28px" }, "Your cart 🛒"),
     el("p", { class: "sub", style: "color:var(--ink-soft);margin:0 0 24px" },
@@ -1317,10 +1331,11 @@ route("/cart", () => {
         ]),
         checkoutErr,
         checkoutBtn,
+        sandboxCreds,
         el("div", { class: "cart-secure" }, [
           el("span", {}, "🔒 Secured payments by "),
           el("strong", {}, "MyFatoorah"),
-          el("div", { class: "cart-secure-sub" }, "Visa · Mastercard · KNET · Apple Pay · Mada")
+          el("div", { class: "cart-secure-sub" }, "KNET · Visa · Mastercard · Apple Pay")
         ])
       ])
     ])
