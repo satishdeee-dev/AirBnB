@@ -1379,6 +1379,63 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacit
 .table td.stack .refund-line { color: var(--good); font-weight: 600; font-size: 13px; }
 .table td.stack .fee-line { color: var(--ink-soft); font-size: 11px; }
 
+/* ---------- "Pay Now" / Confirm Booking button (brand: blue + yellow) ---------- */
+.btn-paynow {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 22px;
+  border-radius: var(--radius-sm);
+  font-size: 16px; font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, #1E3A8A 0%, #2547b0 100%);
+  border: 2px solid #1E3A8A;
+  box-shadow: 0 6px 18px rgba(30, 58, 138, 0.35);
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, border-color 0.25s ease;
+}
+.btn-paynow .paynow-icon { font-size: 14px; }
+.btn-paynow:hover {
+  background: linear-gradient(135deg, #FACC15 0%, #f4b400 100%);
+  color: #1E3A8A;
+  border-color: #FACC15;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 10px 24px rgba(250, 204, 21, 0.45);
+}
+.btn-paynow:active { transform: translateY(0) scale(0.99); }
+.btn-paynow:disabled {
+  opacity: 0.7; cursor: wait; transform: none;
+}
+.btn-paynow.btn-block { width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .btn-paynow { transition: background 0.2s ease, color 0.2s ease; }
+  .btn-paynow:hover { transform: none; }
+}
+
+.callback-stage.success {
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.08) 0%, var(--bg-card) 100%);
+}
+.callback-stage.failed {
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.06) 0%, var(--bg-card) 100%);
+}
+.callback-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 80px; height: 80px;
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--bad);
+  font-size: 40px; font-weight: 900;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  animation: confirm-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.callback-actions {
+  display: flex; gap: 12px; justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+.callback-actions .btn { min-width: 160px; }
+
 /* ---------- cart page ---------- */
 .cart-page h1 { animation: fade-up 0.3s ease-out; }
 .cart-shell {

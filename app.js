@@ -378,7 +378,8 @@ function navigate(path) {
 }
 
 function render() {
-  const path = location.hash.slice(1) || "/";
+  // Strip query string from the hash (e.g. /payment-success?cartIds=…) for routing.
+  const path = (location.hash.slice(1) || "/").split("?")[0];
   const session = Store.session.current();
 
   // gate: must be logged in to access anything except /login and /signup
@@ -1275,23 +1276,22 @@ route("/cart", () => {
   }
 
   let checkoutErr;
-  const checkoutBtn = el("button", { class: "btn btn-primary btn-lg btn-block" }, [
-    el("span", {}, "🔒 "),
-    document.createTextNode("Checkout · " + fmtMoney(total))
+  const checkoutBtn = el("button", { class: "btn btn-paynow btn-lg btn-block", "aria-label": "Confirm booking and pay with KNET" }, [
+    el("span", { class: "paynow-icon" }, "🔒"),
+    document.createTextNode(" Pay Now · " + fmtMoney(total))
   ]);
   checkoutBtn.addEventListener("click", async () => {
     if (items.length === 0) return;
     checkoutBtn.disabled = true;
-    checkoutBtn.innerHTML = "<span class='cart-spinner'></span> Connecting to MyFatoorah…";
+    checkoutBtn.innerHTML = '<span class="cart-spinner"></span> Connecting to MyFatoorah…';
     if (checkoutErr) { checkoutErr.textContent = ""; checkoutErr.style.display = "none"; }
     try {
       const { url } = await Store.cart.checkout(items.map(c => c.id));
-      // Store the cart ids in sessionStorage so the callback knows which to verify
       sessionStorage.setItem("stayly.checkout.cartIds", items.map(c => c.id).join(","));
       window.location.assign(url);
     } catch (err) {
       checkoutBtn.disabled = false;
-      checkoutBtn.innerHTML = "🔒 Checkout · " + fmtMoney(total);
+      checkoutBtn.innerHTML = '<span class="paynow-icon">🔒</span> Pay Now · ' + fmtMoney(total);
       if (checkoutErr) {
         checkoutErr.textContent = err.message || String(err);
         checkoutErr.style.display = "block";
@@ -1328,55 +1328,67 @@ route("/cart", () => {
   shell([body, compareBar()]);
 });
 
-// ---------------- payment callback ----------------
+// ---------------- payment callbacks ----------------
+// MyFatoorah redirects to /payment-success on success and /payment-failed on
+// failure. Both routes parse paymentId/cartIds from the hash query, run the
+// verify-payment edge function, and render the result.
 
-route("/payment-callback", () => {
-  const params = new URLSearchParams(location.hash.split("?")[1] || "");
-  const paymentId = params.get("paymentId");
-  const cartIdsParam = params.get("cartIds") || sessionStorage.getItem("stayly.checkout.cartIds") || "";
-  const cartIds = cartIdsParam.split(",").filter(Boolean);
+function paymentResultPage(presumedSuccess) {
+  return () => {
+    const qs = location.hash.split("?")[1] || "";
+    const params = new URLSearchParams(qs);
+    const paymentId = params.get("paymentId");
+    const cartIdsParam = params.get("cartIds") || sessionStorage.getItem("stayly.checkout.cartIds") || "";
+    const cartIds = cartIdsParam.split(",").filter(Boolean);
 
-  const stage = el("div", { class: "callback-stage" }, [
-    el("div", { class: "callback-spinner" }),
-    el("h2", {}, "Verifying your payment…"),
-    el("p", { class: "sub" }, "Please don't close this window — confirming with MyFatoorah.")
-  ]);
+    const stage = el("div", { class: "callback-stage" }, [
+      el("div", { class: "callback-spinner" }),
+      el("h2", {}, "Verifying your payment…"),
+      el("p", { class: "sub" }, "Please don't close this window — confirming with MyFatoorah.")
+    ]);
+    shell(el("main", { class: "main callback-page" }, stage));
 
-  const body = el("main", { class: "main callback-page" }, stage);
-  shell(body);
-
-  (async () => {
-    try {
-      if (!paymentId && cartIds.length === 0) throw new Error("No payment reference returned");
-      const result = await Store.cart.verify({ paymentId, cartIds });
-      sessionStorage.removeItem("stayly.checkout.cartIds");
-      stage.innerHTML = "";
-      if (result.paid) {
-        stage.appendChild(el("div", { class: "callback-tick", html: '<svg viewBox="0 0 64 64" width="80" height="80"><circle cx="32" cy="32" r="28" fill="none" stroke="#4ade80" stroke-width="3"/><path d="M20 33 L29 42 L46 24" fill="none" stroke="#4ade80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' }));
-        stage.appendChild(el("h2", {}, "Payment confirmed"));
-        stage.appendChild(el("p", { class: "sub" }, `${result.bookingIds?.length || 0} ${(result.bookingIds?.length || 0) === 1 ? "booking" : "bookings"} added to your trips.`));
-        stage.appendChild(el("div", { style: "display:flex;gap:12px;justify-content:center;margin-top:20px" }, [
-          el("a", { class: "btn btn-primary", href: "#/trips" }, "View my trips"),
-          el("a", { class: "btn btn-ghost", href: "#/" }, "Browse more stays")
-        ]));
-      } else {
-        stage.appendChild(el("div", { style: "font-size:48px" }, "⚠️"));
-        stage.appendChild(el("h2", {}, "Payment not completed"));
-        stage.appendChild(el("p", { class: "sub" }, `Status: ${result.status || "Unknown"}. Your cart is still saved.`));
-        stage.appendChild(el("div", { style: "display:flex;gap:12px;justify-content:center;margin-top:20px" }, [
-          el("a", { class: "btn btn-primary", href: "#/cart" }, "Back to cart"),
-          el("a", { class: "btn btn-ghost", href: "#/" }, "Browse stays")
-        ]));
+    (async () => {
+      try {
+        if (!paymentId && cartIds.length === 0) throw new Error("No payment reference returned");
+        const result = await Store.cart.verify({ paymentId, cartIds });
+        sessionStorage.removeItem("stayly.checkout.cartIds");
+        stage.innerHTML = "";
+        if (result.paid) {
+          stage.classList.add("success");
+          stage.appendChild(el("div", { class: "callback-tick", html: '<svg viewBox="0 0 64 64" width="80" height="80"><circle cx="32" cy="32" r="28" fill="none" stroke="#4ade80" stroke-width="3"/><path d="M20 33 L29 42 L46 24" fill="none" stroke="#4ade80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>' }));
+          stage.appendChild(el("h2", {}, "Payment successful 🎉"));
+          stage.appendChild(el("p", { class: "sub" }, `${result.bookingIds?.length || 0} ${(result.bookingIds?.length || 0) === 1 ? "booking" : "bookings"} added to your trips. A receipt has been emailed.`));
+          stage.appendChild(el("div", { class: "callback-actions" }, [
+            el("a", { class: "btn btn-paynow", href: "#/trips" }, "View my trips"),
+            el("a", { class: "btn btn-ghost", href: "#/" }, "Browse more stays")
+          ]));
+        } else {
+          stage.classList.add("failed");
+          stage.appendChild(el("div", { class: "callback-x" }, "✕"));
+          stage.appendChild(el("h2", {}, "Payment failed"));
+          stage.appendChild(el("p", { class: "sub" }, `Status: ${result.status || "Unknown"}. Your cart is saved — try again or pick a different payment method.`));
+          stage.appendChild(el("div", { class: "callback-actions" }, [
+            el("a", { class: "btn btn-paynow", href: "#/cart" }, "Try again"),
+            el("a", { class: "btn btn-ghost", href: "#/" }, "Browse stays")
+          ]));
+        }
+      } catch (err) {
+        stage.innerHTML = "";
+        stage.classList.add("failed");
+        stage.appendChild(el("div", { class: "callback-x" }, "✕"));
+        stage.appendChild(el("h2", {}, presumedSuccess ? "Couldn't confirm payment" : "Payment was not completed"));
+        stage.appendChild(el("p", { class: "sub" }, err.message || String(err)));
+        stage.appendChild(el("a", { class: "btn btn-paynow", href: "#/cart" }, "Back to cart"));
       }
-    } catch (err) {
-      stage.innerHTML = "";
-      stage.appendChild(el("div", { style: "font-size:48px" }, "❌"));
-      stage.appendChild(el("h2", {}, "Verification failed"));
-      stage.appendChild(el("p", { class: "sub" }, (err.message || String(err))));
-      stage.appendChild(el("a", { class: "btn btn-primary", href: "#/cart" }, "Back to cart"));
-    }
-  })();
-});
+    })();
+  };
+}
+
+route("/payment-success", paymentResultPage(true));
+route("/payment-failed", paymentResultPage(false));
+// Legacy route (older cart flow) — keep it forwarding to /payment-success
+route("/payment-callback", paymentResultPage(true));
 
 // ---------------- step 3: payment page ----------------
 
